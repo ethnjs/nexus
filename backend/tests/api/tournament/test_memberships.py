@@ -267,6 +267,24 @@ def test_onboarding_group_is_null_without_live_steps(client, td_user, td_tournam
     assert row["onboarding"] is None
 
 
+def test_profile_lists_this_tournaments_roles_without_the_roles_group(
+    client, td_user, td_tournament, other_user, db
+):
+    """The profile's tournament history includes this tournament, and its
+    roles come from the same rows the roles group reads."""
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=profile").json()
+    row = next(r for r in rows if r["user"]["id"] == other_user.id)
+    here = next(
+        t for t in row["user"]["tournament_memberships"] if t["tournament_id"] == td_tournament.id
+    )
+    assert here["assignments"] == [{"role": "Volunteer", "event": None}]
+    assert "roles" not in row
+
+
 def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
     """Distinct from omitting the param: an explicit empty value is a caller
     saying it needs nothing but the row's identity."""
@@ -1709,6 +1727,12 @@ def test_join_code_creator_carries_name_and_roles_only(client, td_user, td_tourn
     assert set(creator) == {"user_id", "membership_id", "first_name", "last_name", "roles"}
     assert creator["user_id"] == td_user.id
     assert [r["label"] for r in creator["roles"]] == ["Tournament Director"]
+
+    # The creator is on the roster too; asking for provenance without the
+    # roles column must not make their roles read as empty.
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=membership").json()
+    listed = next(r for r in rows if r["id"] == m.id)["join_code"]["creator"]
+    assert listed == creator
 
 
 def test_get_membership_does_not_leak_others(client, td_user, other_tournament, db):

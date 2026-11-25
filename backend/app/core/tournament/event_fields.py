@@ -1,25 +1,11 @@
 """Named field groups for the event read routes' `fields` query param.
 
-The event-side counterpart to app/core/tournament/field_groups.py, and it
-keeps that module's three rules — they are what makes `fields` predictable
-rather than a per-route convention:
-
-1. **Omitting `fields` means everything.** An absent param parses to None and
-   every consumer treats None as "no narrowing". A caller with no opinion is
-   never punished with a surprise-empty response.
-
-2. **An unrequested group is absent from the JSON, not null.** `null` and `[]`
-   keep their ordinary meanings — no value, and no rows.
-
-3. **Identity is not a group.** id/tournament_id/the event's own name and
-   division always serialize; `fields` selects an event's *data*, and there is
-   no caller that wants a row it can't identify.
-
-Two registries rather than one shared generic: the groups, their keys and
-their loader strategies are entirely different between memberships and
-events, and the only thing genuinely common is the three rules above plus
-~20 lines of parsing. Generalizing that would couple the two catalogs for no
-saving worth having.
+The event-side counterpart to app/core/tournament/field_groups.py, keeping
+its three rules: omitting `fields` means everything, an unrequested group is
+absent from the JSON rather than null, and identity (id, tournament_id, the
+event's own name and division) is never a group. A separate registry because
+the groups, their keys and their loaders have nothing in common with the
+membership side.
 """
 
 from __future__ import annotations
@@ -27,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Query, status
-from sqlalchemy.orm import joinedload, noload, selectinload
+from sqlalchemy.orm import joinedload, raiseload, selectinload
 
 # ---------------------------------------------------------------------------
 # Always-present keys — see rule 3.
@@ -56,13 +42,9 @@ ALWAYS_KEYS = frozenset(
 
 @dataclass(frozen=True)
 class EventFieldGroup:
-    """One name a caller can put in `fields`.
-
-    `keys` are what it serializes; `relationships` are the TournamentEvent
-    relationship attributes it reads, loaded eagerly when wanted and
-    noload()ed when not — a relationship left on its default lazy strategy
-    would issue a query per row for data about to be excluded from the dump.
-    """
+    """One name a caller can put in `fields`: `keys` are what it serializes,
+    `relationships` the TournamentEvent relationships it reads, eager-loaded
+    when wanted and raiseloaded when not."""
 
     name: str
     keys: frozenset[str] = frozenset()
@@ -79,18 +61,15 @@ GROUPS: dict[str, EventFieldGroup] = {
         keys=frozenset({"shifts"}),
         relationships=("shifts",),
     ),
-    # The tracks themselves, not just their ids: every staff-side reader wants
-    # the track's name and dates, and re-joining them against a separately
-    # fetched catalog is the only alternative.
+    # The tracks themselves, not just ids: every staff-side reader wants their
+    # names and dates.
     TRACKS: EventFieldGroup(
         name=TRACKS,
         keys=frozenset({"tracks"}),
         relationships=("tracks",),
     ),
-    # Where the event physically happens, per track it runs on. Still the
-    # day-of logistics block a board drawing chips needs none of — it just
-    # answers per track now, because one event has a different room on each
-    # day it runs.
+    # Where the event happens on each track it runs on; a board drawing chips
+    # needs none of it.
     LOCATION: EventFieldGroup(
         name=LOCATION,
         keys=frozenset({"track_details"}),
@@ -151,12 +130,9 @@ def dump_exclude(requested: frozenset[str] | None) -> set[str] | None:
 
 
 def loader_options(requested: frozenset[str] | None) -> list:
-    """SQLAlchemy options implementing `fields` at the query level.
-
-    Deliberately does NOT emit the joins every response needs regardless —
-    the canonical `event` row, mainly. Routes add those; this only expresses
-    what varies with `fields`.
-    """
+    """Loader options implementing `fields`: a wanted relationship is
+    eager-loaded, an unwanted one raiseloaded. Routes add the loads every
+    response needs, such as the canonical `event` row."""
     from app.models.models import (
         TournamentEvent,
         TournamentEventTrack,
@@ -167,7 +143,6 @@ def loader_options(requested: frozenset[str] | None) -> list:
 
     # Relationships needing a further hop to be usable: a shift's event_count
     # counts the events attached to it, a track read embeds its university.
-    # A tuple where one hop isn't enough.
     NESTED = {
         "shifts": (joinedload(TournamentShift.tournament_events),),
         "tracks": (joinedload(TournamentTrack.university),),
@@ -185,7 +160,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
         for rel in group.relationships:
             attr = getattr(TournamentEvent, rel)
             if not included:
-                options.append(noload(attr))
+                options.append(raiseload(attr))
                 continue
             option = selectinload(attr)
             nested = NESTED.get(rel)

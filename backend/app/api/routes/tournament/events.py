@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.field_selection import validate_requested
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.event_fields import dump_exclude, field_selection, loader_options
@@ -40,8 +41,6 @@ from app.schemas.tournament.event import (
     EventUpdate,
 )
 
-# Routes are nested: /tournaments/{tournament_id}/events/...
-# tournament_id is always present in the path, which drives the permission check.
 router = APIRouter(prefix="/tournaments/{tournament_id}/events", tags=["tournaments"])
 
 
@@ -72,13 +71,8 @@ def _season_event(
     )
 
 
-# There is no bounds check on an event any more. An event has no times of its
-# own — its schedule is the union of its shifts, and each of those is
-# already bounded by its own track's date range. That also
-# closes a hole the old check couldn't: with Day 1 on Feb 13 and Day 2 on
-# Feb 20, an event on Feb 16 fell inside the tournament's span and passed,
-# even though the tournament doesn't run that day. No shift exists there, so
-# it is now unreachable rather than merely discouraged.
+# No date-bounds check: an event has no times of its own, and each of its
+# shifts is already bounded by its track's dates.
 
 
 def _apply_shifts_and_tracks(
@@ -154,21 +148,15 @@ def _apply_shifts_and_tracks(
     else:
         wanted = {detail.track_id: None for detail in event.track_details}
 
-    # Unconditional, not only when the write included shift_ids. Gating this
-    # on shift_ids is what let a PATCH sending tracks alone drop a track the
-    # event's existing shifts still sat on, leaving an event scheduled on a
-    # day it wasn't linked to — see the repair in revision 9beadc61ad5a.
-    # A track a shift demands is therefore not removable while the shift is
-    # attached: detach the shift first, which is the honest order anyway.
+    # Every attached shift keeps its track linked, whatever the payload says:
+    # drop the shift first to drop its track.
     for shift in event.shifts:
         wanted.setdefault(shift.track_id, None)
 
     existing = {detail.track_id: detail for detail in event.track_details}
 
-    # A link row that stays keeps its identity, so a track the payload didn't
-    # mention keeps the building and rooms already set on it. Rebuilding the
-    # list wholesale would wipe a location the TD never touched — the same
-    # reason detaching a shift unpins its assignments instead of deleting them.
+    # Existing link rows are kept rather than rebuilt, so a track the payload
+    # didn't mention keeps its location.
     for track_id, row in existing.items():
         if track_id not in wanted:
             event.track_details.remove(row)
@@ -350,9 +338,7 @@ def list_events(
     query = db.query(TournamentEvent)
     if public:
         query = query.options(joinedload(TournamentEvent.event))
-        # The member shape carries shifts now (see EventMemberRead), but not
-        # their event_count — so a plain load, without the extra hop the staff
-        # shape needs to compute it.
+        # Shifts without the hop to their events: the member shape has no event_count.
         query = query.options(selectinload(TournamentEvent.shifts))
     else:
         query = query.options(
@@ -370,15 +356,11 @@ def list_events(
 
 
 def _dump(events: list[TournamentEvent], requested: frozenset[str] | None):
-    """Serialize the staff shape, dropping the groups nobody asked for.
-
-    Returns plain dicts rather than EventRead when narrowing, because an
-    unrequested group must be *absent* from the JSON — a pydantic model
-    always carries every declared field, so excluding at dump time is the
-    only way to express "you didn't ask" as distinct from "no value".
-    """
+    """Serialize the staff shape, reading and returning only the requested
+    groups. Plain dicts when narrowing: an unrequested group must be absent
+    from the JSON, and a model always carries every declared field."""
     exclude = dump_exclude(requested)
-    reads = [EventRead.model_validate(event) for event in events]
+    reads = [validate_requested(EventRead, event, exclude) for event in events]
     if exclude is None:
         return reads
     return [read.model_dump(exclude=exclude) for read in reads]
@@ -412,7 +394,6 @@ def create_event(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    # Validate tournament_id in body matches path
     if payload.tournament_id != tournament_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

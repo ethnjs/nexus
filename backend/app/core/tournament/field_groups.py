@@ -1,32 +1,21 @@
 """Named field groups for the membership read routes' `fields` query param.
 
-One route serves the roster, the role pickers, the detail panel and the
-member's own row. They want wildly different amounts of the same membership,
-and the old answer was a second response schema (MembershipSlimResponse) plus
-a second route (GET .../search/). This is the replacement: the caller names
-the groups it wants and gets exactly those.
-
-Three rules the rest of the system depends on:
+The roster, the role pickers, the detail panel and /members/me read the same
+membership in very different amounts; a caller names the groups it wants and
+gets exactly those. Three rules the rest of the system depends on:
 
 1. **Omitting `fields` means everything.** parse_fields returns None for an
-   absent param, and every consumer treats None as "no narrowing". A caller
-   with no opinion is never punished with a surprise-empty response.
+   absent param, and every consumer treats None as "no narrowing".
 
-2. **An unrequested group is absent from the JSON, not null.** `null` and `[]`
-   keep their ordinary meanings — no value, and no rows. "You didn't ask" is a
-   missing key. A client can therefore never mistake a withheld field for an
-   empty one.
+2. **An unrequested group is absent from the JSON, not null.** `null` and
+   `[]` keep their ordinary meanings, so a client can never mistake a
+   withheld field for an empty one.
 
-3. **Identity is not a group.** id/created_at/the member's name and so on
-   always serialize. `fields` selects membership *data*; it does not let a
-   caller ask for a row it can't identify, and there is no caller that wants
-   one.
+3. **Identity is not a group.** id, created_at, the member's name and so on
+   always serialize.
 
-Groups also carry their loading strategy, which is the actual performance
-win. A group nobody asked for gets noload() rather than being fetched and
-thrown away — pydantic validates straight off the ORM object, so a
-relationship left on its default lazy strategy would issue a query per row
-for data that is about to be excluded from the dump anyway.
+An unrequested group costs no query: loader_options raiseloads its
+relationships and validate_requested never reads its fields.
 """
 
 from __future__ import annotations
@@ -34,16 +23,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Query, status
-from sqlalchemy.orm import joinedload, noload, selectinload
+from sqlalchemy.orm import joinedload, raiseload, selectinload
 
-# ---------------------------------------------------------------------------
-# Always-present keys — see rule 3 above.
-#
-# The nested user object keeps its name, pronouns and account timestamps: no
-# caller wants an anonymous row, and account_age is a default members-table
-# column whose data is already on the joined User row, so grouping it would
-# force the table to pull the whole profile for one scalar.
-# ---------------------------------------------------------------------------
+# Always-present keys (rule 3). The nested user keeps its name, pronouns and
+# account timestamps: account_age is a default members-table column, and its
+# data is already on the joined User row.
 ALWAYS_KEYS = frozenset(
     {
         # Which membership this is, on both responses. Null on /members/me only
@@ -80,19 +64,11 @@ ALWAYS_USER_KEYS = frozenset(
 class FieldGroup:
     """One name a caller can put in `fields`.
 
-    `keys`/`user_keys` are what it serializes. `relationships` are the
-    TournamentMembership relationship attributes it reads — loaded eagerly
-    when the group is wanted, noload()ed when it isn't. `user_relationships`
-    is the same for hops off the joined User.
-
-    `built` marks a group whose raw ORM rows are not its final value: a
-    builder in app.core.tournament.memberships has to run, because the shape
-    the client needs can only be recovered from the tournament's forms. Those
-    builders still read the relationship (and so still need it loaded) —
-    build_event_preferences reverses one-row-per-event back into the option
-    the member actually picked, build_lunch resolves each row's
-    question_type. custom and onboarding are the built groups with no
-    relationship at all — both are queried from form responses.
+    `keys`/`user_keys` are what it serializes; `relationships`/
+    `user_relationships` are the TournamentMembership/User relationships it
+    reads, eager-loaded when wanted and raiseloaded when not. `built` marks a
+    group whose final value comes from a builder in
+    app.core.tournament.memberships rather than straight off the ORM rows.
     """
 
     name: str
@@ -150,9 +126,8 @@ GROUPS: dict[str, FieldGroup] = {
             "memberships",
         ),
     ),
-    # Serialized as `roles`, loaded through `track_assignments`: a member's
-    # roles are the distinct roles across those rows rather than a stored list
-    # (#83). The key keeps its name because that is what the response calls it.
+    # Serialized as roles but loaded through track_assignments: a member's roles
+    # are the distinct roles across those rows.
     ROLES: FieldGroup(
         name=ROLES,
         keys=frozenset({"roles"}),
@@ -165,10 +140,8 @@ GROUPS: dict[str, FieldGroup] = {
         keys=frozenset({"source", "join_code", "age_disclosure"}),
         relationships=("join_code",),
     ),
-    # Not `built`: the raw rows are the right answer for a manager reading
-    # the roster. /members/me additionally pads every live track the member
-    # has no row for as "pending" (build_track_statuses) — a property of the
-    # route, not of the group.
+    # Not built: the raw rows are what a manager's roster shows. /members/me pads
+    # untouched live tracks as "pending" itself (build_track_statuses).
     TRACKS: FieldGroup(
         name=TRACKS,
         keys=frozenset({"track_statuses"}),
@@ -185,9 +158,8 @@ GROUPS: dict[str, FieldGroup] = {
         relationships=("lunch_selections",),
         built=True,
     ),
-    # The relationship holds one flat row per event; only build_event_
-    # preferences can group them back into the option the member picked, so
-    # MembershipBaseResponse's validator drops the raw rows outright.
+    # One flat row per event; only build_event_preferences can regroup them by
+    # the option picked, so the schema drops the raw rows.
     EVENT_PREFS: FieldGroup(
         name=EVENT_PREFS,
         keys=frozenset({"event_preferences"}),
@@ -264,19 +236,10 @@ def wants(requested: frozenset[str] | None, group: str) -> bool:
 
 
 def dump_exclude(requested: frozenset[str] | None) -> dict | None:
-    """The `exclude` argument for model_dump — the keys of every group the
-    caller did not ask for.
-
-    Returns None when nothing is excluded, so callers can pass it straight
-    through to model_dump(exclude=...) either way.
-
-    Shaped as a dict because the user object is split across groups: contact
-    and profile prune keys inside it while the object itself always
-    serializes. Keys belonging to a schema that doesn't have them (notes on
-    the Me response, say) are harmless — pydantic ignores an exclude entry
-    for a field the model doesn't declare, which is what lets one exclude set
-    serve both response models.
-    """
+    """model_dump's `exclude` for every unrequested group, or None when nothing
+    is excluded. A dict because contact and profile prune keys inside `user`;
+    keys a model doesn't declare are ignored, so one value serves both
+    response models and validate_requested."""
     if requested is None:
         return None
 
@@ -295,17 +258,9 @@ def dump_exclude(requested: frozenset[str] | None) -> dict | None:
 
 
 def loader_options(requested: frozenset[str] | None) -> list:
-    """SQLAlchemy options implementing `fields` at the query level.
-
-    A wanted relationship is loaded eagerly (one query for the whole page
-    rather than one per row); an unwanted one is noload()ed so that pydantic
-    validating off the ORM object sees an empty collection and never touches
-    the database for a field that is about to be excluded anyway.
-
-    Deliberately does NOT emit the joins every response needs regardless —
-    the user row itself, mainly. Routes add those; this only expresses what
-    varies with `fields`.
-    """
+    """Loader options implementing `fields`: a wanted relationship is
+    eager-loaded for the whole page, an unwanted one raiseloaded. Routes add
+    the loads every response needs, such as the user row."""
     from app.core.users import tournament_membership_loads
     from app.models.models import (
         Event,
@@ -318,10 +273,8 @@ def loader_options(requested: frozenset[str] | None) -> list:
         UserVolunteerExperience,
     )
 
-    # Relationships needing further hops to be usable: the role behind a
-    # membership-role join row, the shift behind an availability row, and the
-    # four an AssignmentRead flattens. Tuples, since one relationship can need
-    # several.
+    # Further hops a wanted relationship needs: the shift behind an availability
+    # row, and the four an AssignmentRead flattens.
     NESTED = {
         # The role rides along on each assignment via its own lazy="joined".
         "track_assignments": (),
@@ -353,7 +306,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
         for rel in group.relationships:
             attr = getattr(TournamentMembership, rel)
             if not included:
-                options.append(noload(attr))
+                options.append(raiseload(attr))
                 continue
             option = selectinload(attr)
             nested = NESTED.get(rel)
@@ -366,7 +319,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
             # so the chain has to agree with the bare option above it.
             base = joinedload(TournamentMembership.user)
             if not included:
-                options.append(base.noload(attr))
+                options.append(base.raiseload(attr))
                 continue
             option = base.selectinload(attr)
             nested = USER_NESTED.get(rel)

@@ -1,8 +1,4 @@
-"""Unit tests for the `fields` query param's group definitions.
-
-No database and no routes — this covers the mechanism itself. The routes
-that consume it are exercised in tests/api/tournament/test_memberships.py.
-"""
+"""Unit tests for the membership field groups. The routes that consume them are tested in tests/api/tournament/test_memberships.py."""
 
 import pytest
 from fastapi import HTTPException
@@ -240,15 +236,26 @@ def test_loader_options_compile_against_a_real_query(db: Session):
         query.limit(0).all()
 
 
-def test_unwanted_relationships_are_noloaded_not_lazy():
-    """A relationship left on its default strategy would be lazy-loaded by
-    pydantic during validation — one query per row for data the dump is
-    about to exclude."""
-    from sqlalchemy.orm.strategy_options import _AbstractLoad
+def test_unrequested_relationships_raise_instead_of_loading(db: Session, td_tournament):
+    """An unrequested group must cost no query, and code that reads it anyway
+    must fail rather than see an empty collection."""
+    from sqlalchemy.exc import InvalidRequestError
+    from sqlalchemy.orm import joinedload
 
-    options = loader_options(frozenset({"roles"}))
-    assert options, "narrowing should always produce loader options"
-    assert all(isinstance(opt, _AbstractLoad) for opt in options)
+    from app.models.models import TournamentMembership
+
+    db.expire_all()
+    (membership,) = (
+        db.query(TournamentMembership)
+        .options(joinedload(TournamentMembership.user), *loader_options(frozenset({"roles"})))
+        .filter(TournamentMembership.tournament_id == td_tournament.id)
+        .all()
+    )
+    with pytest.raises(InvalidRequestError):
+        _ = membership.lunch_selections
+    with pytest.raises(InvalidRequestError):
+        _ = membership.user.memberships
+    assert [role.label for role in membership.held_roles] == ["Tournament Director"]
 
 
 def test_built_groups_are_the_ones_needing_a_builder_pass():

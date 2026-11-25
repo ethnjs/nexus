@@ -889,13 +889,11 @@ def test_member_detail_carries_event_preferences(client, db, td_user, td_tournam
     ]
 
 
-def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td_tournament):
+def test_roster_returns_event_preferences_only_when_asked_for(client, db, td_user, td_tournament):
+    """A surface resolves to the groups its columns need, and no default
+    column reads event preferences, so the table leaves them out; naming the
+    group brings them back on the same route."""
     morning_track = _pref_track(db, td_tournament, "Morning")
-    """The roster used to be a narrower schema that simply had no such field.
-    It is the same schema as the detail view now, so what keeps a whole
-    tournament's event preferences off a roster is the caller not asking:
-    a surface resolves to the groups its columns need, and no default column
-    reads them."""
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     membership = _td_membership(db, td_user, td_tournament)
@@ -904,23 +902,6 @@ def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td
     res = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table")
     assert res.status_code == 200
     assert "event_preferences" not in res.json()[0]
-
-
-def test_roster_returns_event_preferences_when_asked_for(client, db, td_user, td_tournament):
-    morning_track = _pref_track(db, td_tournament, "Morning")
-    """The other half: one response shape, narrowed by the caller, so the
-    roster can serve them too rather than needing the detail route.
-
-    Deliberately a separate test rather than a second request in the one
-    above. The test client shares a single session across requests, so a
-    prior request's noload() leaves event_preferences already-loaded-as-empty
-    on the identity-mapped instance, and a later selectinload won't overwrite
-    an attribute that is already populated. Per-request sessions in
-    production make that impossible; two tests keep it out of the way here."""
-    login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id).json()
-    membership = _td_membership(db, td_user, td_tournament)
-    _add_preference(db, membership.id, morning_track, event["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/?fields=event_prefs")
     row = next(r for r in res.json() if r["id"] == membership.id)

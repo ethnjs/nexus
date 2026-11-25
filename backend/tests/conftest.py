@@ -394,7 +394,9 @@ def client(db, mock_sheets_service, mock_forms_service):
         try:
             yield db
         finally:
-            pass
+            # Production gives each request a fresh session; expiring stands in
+            # for that, so one request's loaded state can't leak into the next.
+            db.expire_all()
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_sheets_service] = lambda: mock_sheets_service
