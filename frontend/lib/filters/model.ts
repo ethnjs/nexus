@@ -111,6 +111,13 @@ function* leaves(filter: FilterGroup): Generator<FilterCondition> {
   }
 }
 
+/** Whether any row, inside groups too, is on `key`. */
+export function filterUses(filter: FilterGroup | null | undefined, key: string): boolean {
+  if (!filter) return false;
+  for (const condition of leaves(filter)) if (condition.field === key) return true;
+  return false;
+}
+
 export const RANK_PREFIX = "rank:";
 export const RANK_OPS = [
   { value: "lt", label: "<" },

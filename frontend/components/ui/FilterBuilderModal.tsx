@@ -17,7 +17,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { MenuHeading, MenuItem, MenuNote } from "@/components/ui/DrillMenu";
@@ -370,6 +378,47 @@ function useSortableItem(id: string) {
   };
 }
 
+/**
+ * Eases its height to its content's, so rows slide the modal open and shut.
+ * Set on the element directly, from the observer, so the new height lands
+ * before the frame paints: a state update could let the rows spill over the
+ * footer for a frame first.
+ */
+function AutoHeight({ children }: { children: ReactNode }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    let last = inner.offsetHeight;
+    outer.style.height = `${last}px`;
+    const observer = new ResizeObserver(() => {
+      const next = inner.offsetHeight;
+      if (next === last) return;
+      last = next;
+      // Clipped only while it moves, so the rows' own popovers and hover
+      // controls aren't cut off at rest.
+      outer.style.overflow = "hidden";
+      outer.style.height = `${next}px`;
+    });
+    observer.observe(inner);
+    const settle = (e: TransitionEvent) => {
+      if (e.target === outer && e.propertyName === "height") outer.style.overflow = "";
+    };
+    outer.addEventListener("transitionend", settle);
+    return () => {
+      observer.disconnect();
+      outer.removeEventListener("transitionend", settle);
+    };
+  }, []);
+  return (
+    <div ref={outerRef} style={{ transition: "height 200ms cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
+      <div ref={innerRef}>{children}</div>
+    </div>
+  );
+}
+
 function SortableRow({ id, render }: { id: string; render: (grip: ReactNode) => ReactNode }) {
   const { setNodeRef, grip, style } = useSortableItem(id);
   return (
@@ -565,16 +614,26 @@ export function FilterBuilderModal<Row>({
 
   const pruned = pruneFilter(fromDraft(draft), byKey);
 
+  // Each row's value at its natural width, as the rows report it.
+  const [valueWidths, setValueWidths] = useState<ReadonlyMap<string, number>>(new Map());
+  const reportValueWidth = useCallback((id: string, width: number | null) => {
+    setValueWidths((prev) => {
+      if ((prev.get(id) ?? null) === width) return prev;
+      const next = new Map(prev);
+      if (width === null) next.delete(id);
+      else next.set(id, width);
+      return next;
+    });
+  }, []);
+  const widthOf = (row: DraftRow) =>
+    rowWidth(row.condition, byKey.get(row.condition.field), valueWidths.get(row.id));
+
   // As wide as the widest row needs to sit on one line, within bounds; past
   // the cap, rows wrap instead. A row in a group sits inside the group's own
   // grip, lead and box.
   const widest = Math.max(
     ...draft.items.flatMap((item) =>
-      isDraftGroup(item)
-        ? item.rows.map(
-            (row) => GROUP_INSET + rowWidth(row.condition, byKey.get(row.condition.field)),
-          )
-        : [rowWidth(item.condition, byKey.get(item.condition.field))],
+      isDraftGroup(item) ? item.rows.map((row) => GROUP_INSET + widthOf(row)) : [widthOf(item)],
     ),
     0,
   );
@@ -698,6 +757,8 @@ export function FilterBuilderModal<Row>({
             handle={grip}
             onChange={(next) => updateRow(row.id, next)}
             onRemove={() => updateRow(row.id, null)}
+            onValueWidth={(width) => reportValueWidth(row.id, width)}
+            singleLine={(inGroup ? GROUP_INSET : 0) + widthOf(row) + PANEL_PADDING <= panelWidth}
           />
         )}
       />
@@ -745,46 +806,48 @@ export function FilterBuilderModal<Row>({
           </div>
         )}
 
-        {loading ? (
-          <LoadingState context="section" />
-        ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCorners}
-            onDragOver={onDragOver}
-            onDragEnd={onDragEnd}
-          >
-            <SortableContext
-              items={draft.items.map((item) => item.id)}
-              strategy={verticalListSortingStrategy}
+        <AutoHeight>
+          {loading ? (
+            <LoadingState context="section" />
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragOver={onDragOver}
+              onDragEnd={onDragEnd}
             >
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {draft.items.length === 0 && (
-                  <div style={{ fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-                    No filters. Everything is shown.
-                  </div>
-                )}
-                {draft.items.map((item, i) => {
-                  const lead = joinLead(i, draft.op, setRoot);
-                  const position = linePosition(i, draft.items.length);
-                  if (!isDraftGroup(item)) return renderRow(item, lead, position);
-                  return (
-                    <SortableGroup
-                      key={item.id}
-                      group={item}
-                      lead={lead}
-                      position={position}
-                      onOp={(op) => updateGroup(item.id, { op })}
-                      onRemove={() => updateGroup(item.id, null)}
-                      onAdd={() => updateGroup(item.id, { rows: [...item.rows, blankRow()] })}
-                      renderRow={renderRow}
-                    />
-                  );
-                })}
-              </div>
-            </SortableContext>
-          </DndContext>
-        )}
+              <SortableContext
+                items={draft.items.map((item) => item.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {draft.items.length === 0 && (
+                    <div style={{ fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+                      No filters. Everything is shown.
+                    </div>
+                  )}
+                  {draft.items.map((item, i) => {
+                    const lead = joinLead(i, draft.op, setRoot);
+                    const position = linePosition(i, draft.items.length);
+                    if (!isDraftGroup(item)) return renderRow(item, lead, position);
+                    return (
+                      <SortableGroup
+                        key={item.id}
+                        group={item}
+                        lead={lead}
+                        position={position}
+                        onOp={(op) => updateGroup(item.id, { op })}
+                        onRemove={() => updateGroup(item.id, null)}
+                        onAdd={() => updateGroup(item.id, { rows: [...item.rows, blankRow()] })}
+                        renderRow={renderRow}
+                      />
+                    );
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </AutoHeight>
         {/* Below the rows, so its list opens over the footer rather than over
             the filters it adds to. */}
         <div style={{ marginTop: "16px" }}>

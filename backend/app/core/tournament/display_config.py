@@ -280,12 +280,8 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_TIME,
 )
 
-# Unlike the roster's, these filters are applied in the client (the events
-# list is one page and every filtered field is already on the row). Values
-# are opaque here either way: a category that no longer exists is inert,
-# exactly as a deleted track is on the roster.
-# Shared with the board (see EVENTS_FILTER_KEYS in EventsFilterModal.tsx):
-# both pages filter with the same predicate, so they store the same keys.
+# Matched in the client (eventFilterFields.ts), so values are opaque here. Every
+# event list filters with the same fields.
 KNOWN_EVENT_FILTER_KEYS = frozenset(
     {
         "division",
@@ -295,10 +291,8 @@ KNOWN_EVENT_FILTER_KEYS = frozenset(
         "self_schedule",
         "category",
         "track",
-        "building",
-        "placement",
-        "shifts",
         "shift",
+        "location",
         "staffing",
     }
 )

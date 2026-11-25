@@ -3,7 +3,10 @@
 Rewrites each display_config surface's legacy `filters` ({key: [values]}) as a
 `filter` condition tree, and replaces the export presets' member_filters /
 event_filters columns with member_filter / event_filter trees. Keys AND,
-values within one key OR, as the legacy filters did.
+values within one key OR, as the legacy filters did. Sentinel values for "has
+none" become is-empty rows. The event lists' shift, building and placement
+filters are dropped: their replacements are per track, which the old values
+don't say.
 
 Revision ID: f7a3d8e2c614
 Revises: e5b2c9d71f30
@@ -27,6 +30,10 @@ ANY = "__any__"
 LUNCH_UNANSWERED = "__unanswered__"
 PAIRED = {"track", "assigned", "lunch", "event_pref", "shift"}
 ROSTER_SURFACES = {"members_table", "assignment_card", "zones_members"}
+EVENT_SURFACES = {"events_table", "assignments_events", "buildings_events"}
+EVENT_UNSET = "__unset__"
+STAFFING_VALUES = {"full", "short", "empty", "no_needs"}
+DROPPED_EVENT_KEYS = {"shift", "shifts", "building", "placement"}
 EMPTY_FILTER = {"op": "and", "conditions": []}
 
 
@@ -90,6 +97,20 @@ def _roster_rows(field: str, values: list[str]) -> list[dict] | None:
     return rows
 
 
+def _event_rows(field: str, values: list[str]) -> list[dict] | None:
+    if field in DROPPED_EVENT_KEYS:
+        return None
+    if field == "staffing":
+        values = [v for v in values if v in STAFFING_VALUES]
+        # The event's needs taken together, as against one role or age rule.
+        return [_cond(field, values, group="all")] if values else None
+    rest = [v for v in values if v != EVENT_UNSET]
+    rows = [_cond(field, op_="empty")] if EVENT_UNSET in values else []
+    if rest:
+        rows.append(_cond(field, rest))
+    return rows
+
+
 def _tournament_rows(values: list[str]) -> list[dict]:
     """The admin users table's tournament key: "3" in it, "!3" not in it,
     "none" in no tournament. Exclusions AND; the rest OR."""
@@ -107,7 +128,7 @@ def _tournament_rows(values: list[str]) -> list[dict]:
 
 
 def _convert(filters: dict | None, kind: str) -> dict:
-    """kind: "roster", "admin_users" or "plain" (any other table)."""
+    """kind: "roster", "events", "admin_users" or "plain" (any other table)."""
     conditions: list[dict] = []
     for field, values in (filters or {}).items():
         if not isinstance(values, list):
@@ -118,7 +139,12 @@ def _convert(filters: dict | None, kind: str) -> dict:
         if kind == "admin_users" and field == "tournament":
             conditions.extend(_tournament_rows(values))
             continue
-        rows = _roster_rows(field, values) if kind == "roster" else [_cond(field, values)]
+        if kind == "roster":
+            rows = _roster_rows(field, values)
+        elif kind == "events":
+            rows = _event_rows(field, values)
+        else:
+            rows = [_cond(field, values)]
         if not rows:
             continue
         conditions.append(rows[0] if len(rows) == 1 else {"op": "or", "conditions": rows})
@@ -144,7 +170,10 @@ def _convert_config(config: dict | None, kind_of) -> dict | None:
 
 
 def _tournament_kind(surface: str) -> str:
-    return "roster" if surface.partition(":")[0] in ROSTER_SURFACES else "plain"
+    base = surface.partition(":")[0]
+    if base in ROSTER_SURFACES:
+        return "roster"
+    return "events" if base in EVENT_SURFACES else "plain"
 
 
 def _user_kind(surface: str) -> str:
@@ -187,7 +216,7 @@ def upgrade() -> None:
             ),
             {
                 "m": json.dumps(_convert(member_filters, "roster")),
-                "e": json.dumps(_convert(event_filters, "plain")),
+                "e": json.dumps(_convert(event_filters, "events")),
                 "id": preset_id,
             },
         )

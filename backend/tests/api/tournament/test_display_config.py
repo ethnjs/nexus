@@ -1197,10 +1197,10 @@ def test_events_table_accepts_the_boards_filter_keys(client, td_user, td_tournam
     login(client, "td@test.com", "tdpass")
     board_filter = _filter(
         _cond("track", "3"),
-        _cond("building", "5", "__unset__"),
-        _cond("shifts", "none"),
-        _cond("shift", "9"),
-        _cond("staffing", "short", "empty"),
+        _cond("shift", "9", group="3"),
+        _cond("location", "building:5", "room:12", group="3"),
+        _cond("staffing", "short", "empty", group="all"),
+        _cond("staffing", "short", group="over_18_needed"),
     )
     for surface in ("events_table", "assignments_events:all"):
         response = client.put(

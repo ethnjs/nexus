@@ -63,10 +63,10 @@ export function LeadCell({
 }
 
 // ─── Width ────────────────────────────────────────────────────────────────
-// What a row needs to sit on one line, worked out from what it shows rather
-// than measured off the page: the modal sizes itself from this, and a width
-// read back from a laid-out row would change as the modal resized around it.
-// Mirrors the layout below; text is measured with a canvas.
+// What a row needs to sit on one line. The modal sizes itself from this, so
+// nothing in it may depend on the modal's own width: fixed controls are known
+// sizes, a value is measured at its natural width where it has one (see
+// onValueWidth), and chips, which wrap, are estimated with a canvas.
 
 const GAP = 8;
 const FIELD_WIDTH = 200;
@@ -74,6 +74,9 @@ const PICKER_WIDTH = 170;
 // Chips only: room for a few, so they don't wrap one to a line. Every other
 // value control has a size of its own.
 const CHIPS_MIN_WIDTH = 240;
+// Chips only: room past the last chip, so picking another rarely has to wait
+// for the modal to widen.
+const CHIPS_HEADROOM = 120;
 const DATE_WIDTH = 170;
 // Grip, lead and remove, and the gaps between them and the controls.
 const ROW_FRAME = 14 + GAP + 56 + GAP + GAP + 28;
@@ -116,7 +119,7 @@ function valueWidth(condition: FilterCondition, field: FilterField<never>): numb
               (field.scopes ? 90 : 0),
             0,
           );
-    width += 28;
+    width += 28 + CHIPS_HEADROOM;
   } else {
     width = options.reduce((sum, option) => sum + textWidth(option.label, 12, 600) + 30 + GAP, 0);
   }
@@ -135,10 +138,12 @@ function valueMinWidth(condition: FilterCondition, field: FilterField<never> | u
   return control === "chips" ? CHIPS_MIN_WIDTH : 0;
 }
 
-/** The width a row needs to sit on one line. */
+/** The width a row needs to sit on one line, given its value's measured
+ *  width where the row reported one. */
 export function rowWidth(
   condition: FilterCondition,
   field: FilterField<never> | undefined,
+  measuredValue?: number,
 ): number {
   let width = ROW_FRAME + FIELD_WIDTH;
   if (!field) return width;
@@ -150,7 +155,11 @@ export function rowWidth(
     (field.ops.length === 1
       ? textWidth(opLabel(field, field.ops[0], field.single ? 1 : 2), 13, 400) + 8
       : PICKER_WIDTH);
-  return width + GAP + Math.max(valueMinWidth(condition, field), valueWidth(condition, field));
+  return (
+    width +
+    GAP +
+    Math.max(valueMinWidth(condition, field), measuredValue ?? valueWidth(condition, field))
+  );
 }
 
 /** What kind of value an operator takes; switching between kinds clears it. */
@@ -351,6 +360,12 @@ interface FilterConditionRowProps {
   variant?: "primary" | "secondary";
   onChange: (next: FilterCondition) => void;
   onRemove: () => void;
+  /** The value's natural one-line width, or null for chips, which wrap and
+   *  so have none. */
+  onValueWidth?: (width: number | null) => void;
+  /** The modal is (or is easing to) wide enough for this row on one line, so
+   *  it stays there rather than wrapping while the width catches up. */
+  singleLine?: boolean;
 }
 
 /** One filter row: field, group (paired fields), operator, value, remove. */
@@ -366,6 +381,8 @@ export function FilterConditionRow({
   variant = "primary",
   onChange,
   onRemove,
+  onValueWidth,
+  singleLine = false,
 }: FilterConditionRowProps) {
   const options =
     (field?.groups
@@ -391,6 +408,25 @@ export function FilterConditionRow({
     return () => observer.disconnect();
   }, []);
 
+  const kind = valueKind(condition.op);
+  const control = field?.control ?? (options.length <= BUTTONS_UP_TO ? "buttons" : "chips");
+  const measured = !(kind === "options" && control === "chips");
+  // Laid out at max-content, so its width is its own and not the modal's.
+  const naturalRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const natural = naturalRef.current;
+    if (!onValueWidth) return;
+    if (!measured || !natural) {
+      onValueWidth(null);
+      return;
+    }
+    const report = () => onValueWidth(natural.offsetWidth);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(natural);
+    return () => observer.disconnect();
+  }, [measured, onValueWidth]);
+
   function setOp(op: FilterOp) {
     const keep = valueKind(op) === valueKind(condition.op);
     onChange({ ...condition, op, values: keep ? condition.values : [] });
@@ -409,7 +445,6 @@ export function FilterConditionRow({
   }
 
   let value: ReactNode = null;
-  const kind = valueKind(condition.op);
   if (field?.groups && !condition.group && kind === "options") {
     value = (
       <span style={{ fontSize: "13px", color: "var(--color-text-tertiary)" }}>
@@ -449,7 +484,6 @@ export function FilterConditionRow({
       </div>
     );
   } else if (field && kind === "options") {
-    const control = field.control ?? (options.length <= BUTTONS_UP_TO ? "buttons" : "chips");
     // The rank condition is stored among the values but edited on its own.
     const rank = condition.values.find((v) => v.startsWith(RANK_PREFIX));
     const picked = condition.values.filter((v) => !v.startsWith(RANK_PREFIX));
@@ -518,7 +552,8 @@ export function FilterConditionRow({
           flex: 1,
           minWidth: 0,
           display: "flex",
-          flexWrap: "wrap",
+          // An error takes a line of its own, so it still wraps.
+          flexWrap: singleLine && !error ? "nowrap" : "wrap",
           alignItems: "center",
           gap: "8px",
         }}
@@ -584,9 +619,26 @@ export function FilterConditionRow({
         <div
           ref={valueRef}
           className={wrapped && value ? styles.subline : undefined}
-          style={{ flex: "1 1 auto", minWidth: `${valueMinWidth(condition, field)}px` }}
+          style={{
+            flex: "1 1 auto",
+            // On one line, chips hold the width the modal is easing to, so
+            // they run past the edge for a moment rather than wrapping.
+            minWidth: `${
+              singleLine && !measured && field
+                ? Math.max(valueMinWidth(condition, field), valueWidth(condition, field))
+                : valueMinWidth(condition, field)
+            }px`,
+          }}
         >
-          <div className={wrapped && value ? styles.sublineContent : undefined}>{value}</div>
+          <div className={wrapped && value ? styles.sublineContent : undefined}>
+            {measured ? (
+              <div ref={naturalRef} style={{ width: "max-content" }}>
+                {value}
+              </div>
+            ) : (
+              value
+            )}
+          </div>
         </div>
         {error && (
           <div
