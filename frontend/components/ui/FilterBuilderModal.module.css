@@ -1,0 +1,126 @@
+/* The And/Or word slides in when the join flips. */
+.join {
+  display: inline-block;
+  animation: join-flip 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes join-flip {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A row's or group's grip and remove button show only while it is hovered or
+   holds focus. Direct children only, so hovering a group doesn't reveal the
+   controls of every row inside it. */
+.reveal {
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.row:hover > .reveal,
+.row:focus-within > .reveal,
+.group:hover > .reveal,
+.group:focus-within > .reveal,
+.group:hover > .groupBox > .groupHead > .reveal,
+.group:focus-within > .groupBox > .groupHead > .reveal {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .reveal {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .join {
+    animation: none;
+  }
+}
+
+/* The lead column: "Where", the join button, and a tree line from the first
+   row down to the last, turning into each row after the first. Rows sit
+   10px apart, so the line reaches 10px past each cell to meet the next. The
+   turn is level with the row's first line of controls (28px tall), however
+   far the row wraps below it. */
+.lead {
+  --tick: 14px;
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-start;
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.lead > * {
+  position: relative;
+  z-index: 1;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
+.first::before,
+.middle::before,
+.last::before {
+  content: "";
+  position: absolute;
+  left: 22px;
+  border-left: 1px solid var(--color-border-strong);
+}
+
+.first::before {
+  top: calc(var(--tick) + 10px);
+  bottom: -10px;
+}
+
+.middle::before {
+  top: -10px;
+  bottom: -10px;
+}
+
+/* The last row's line bends into it with a rounded corner. */
+.last::before {
+  top: -10px;
+  height: calc(var(--tick) + 10px);
+  right: 0;
+  border-bottom: 1px solid var(--color-border-strong);
+  border-bottom-left-radius: 8px;
+}
+
+.middle::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  right: 0;
+  top: var(--tick);
+  border-top: 1px solid var(--color-border-strong);
+}
+
+/* A row's value that wrapped below its field: indented, with an elbow from
+   the field above into it. */
+.subline {
+  position: relative;
+  padding-left: 24px;
+}
+
+.subline::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: -8px;
+  width: 9px;
+  height: 22px;
+  border-left: 1px solid var(--color-border-strong);
+  border-bottom: 1px solid var(--color-border-strong);
+  border-bottom-left-radius: 6px;
+}

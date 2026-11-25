@@ -25,8 +25,22 @@ export interface FilterField<Row = never> {
   options?: FilterOptionItem[];
   /** Paired fields: a row picks one of these first, then its options. */
   groups?: FilterOptionGroup[];
+  /** Placeholder for the group picker ("Which track"). */
+  groupLabel?: string;
+  /** With a single group, leave its picker out rather than showing it
+   *  locked: a one-track tournament has no track to choose. */
+  hideSingleGroup?: boolean;
   /** Yes/no fields: one value at a time, so the operator reads "is". */
   single?: boolean;
+  /** How values are picked. Defaults to buttons for a handful of options,
+   *  chips with a searchable picker for more. */
+  control?: "buttons" | "divisions" | "chips";
+  /** Chips only: each picked value can be narrowed to some of these, stored
+   *  as "{value}:{scope}" (a role held on Day 1). */
+  scopes?: FilterOptionItem[];
+  /** Event preferences: a rank condition rides along with the events, as
+   *  one more value, "rank:{op}:{n}". */
+  rank?: boolean;
   /** Wording for an operator where the stock one reads oddly ("is empty"
    *  on lunch is "not answered"). */
   opLabels?: Partial<Record<FilterOp, string>>;
@@ -37,6 +51,7 @@ export interface FilterField<Row = never> {
 
 export const OP_LABELS: Record<FilterOp, string> = {
   any_of: "is any of",
+  all_of: "is all of",
   none_of: "is none of",
   empty: "is empty",
   not_empty: "is not empty",
@@ -64,10 +79,10 @@ export function isGroup(item: FilterCondition | FilterGroup): item is FilterGrou
   return "conditions" in item;
 }
 
-export function newCondition(
-  field: FilterField<never>,
-  group: string | null = null,
-): FilterCondition {
+/** A fresh row on `field`. A field with one group starts on it, since
+ *  there is nothing else to pick. */
+export function newCondition(field: FilterField<never>): FilterCondition {
+  const group = field.groups?.length === 1 ? field.groups[0].value : null;
   return { field: field.key, group, op: field.ops[0], values: [] };
 }
 
@@ -91,15 +106,40 @@ function* leaves(filter: FilterGroup): Generator<FilterCondition> {
   }
 }
 
-/** The badge count: rows that actually filter, inside groups too. */
+export const RANK_PREFIX = "rank:";
+export const RANK_OPS = [
+  { value: "lt", label: "<" },
+  { value: "le", label: "≤" },
+  { value: "eq", label: "=" },
+  { value: "ge", label: "≥" },
+  { value: "gt", label: ">" },
+];
+
+/** What a row still needs before it can filter, or null if nothing. A row
+ *  with no field yet is simply dropped, so it needs nothing. */
+export function conditionProblem(
+  condition: FilterCondition,
+  field: FilterField<never> | undefined,
+): string | null {
+  if (!field || isConditionComplete(condition, field)) return null;
+  if (field.groups && !condition.group) {
+    return `Pick ${(field.groupLabel ?? "which one").toLowerCase()}.`;
+  }
+  if (condition.op === "before" || condition.op === "after") return "Pick a date.";
+  if (condition.op === "within_last") return "Enter a number of days.";
+  return "Pick at least one value.";
+}
+
+/** The badge count: rows that actually filter, inside groups too. Without
+ *  `fields` (an applied filter, already pruned) every row counts. */
 export function countActiveConditions(
   filter: FilterGroup | null | undefined,
-  fields: Map<string, FilterField<never>>,
+  fields?: Map<string, FilterField<never>>,
 ): number {
   if (!filter) return 0;
   let count = 0;
   for (const condition of leaves(filter)) {
-    if (isConditionComplete(condition, fields.get(condition.field))) count++;
+    if (!fields || isConditionComplete(condition, fields.get(condition.field))) count++;
   }
   return count;
 }
@@ -143,8 +183,15 @@ export function filterFromStored(
   };
 }
 
+function canonical(item: FilterCondition | FilterGroup): unknown {
+  return isGroup(item)
+    ? [item.op, item.conditions.map(canonical)]
+    : [item.field, item.group ?? null, item.op, item.values];
+}
+
+/** Whether two filters say the same thing, however their JSON was ordered. */
 export function sameFilter(a: FilterGroup, b: FilterGroup): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
 
 export function fieldMap<Row>(fields: FilterField<Row>[]): Map<string, FilterField<Row>> {
@@ -163,9 +210,17 @@ export function describeCondition(
     : undefined;
   const subject = group ? `${field.label}: ${group.label}` : field.label;
   const options = group?.options ?? field.options ?? [];
-  const named = condition.values.map(
-    (value) => options.find((option) => option.value === value)?.label ?? value,
-  );
+  const labelOf = (value: string) =>
+    options.find((option) => option.value === value)?.label ?? value;
+  const named = condition.values.map((value) => {
+    if (value.startsWith(RANK_PREFIX)) {
+      const [op, n] = value.slice(RANK_PREFIX.length).split(":");
+      return `rank ${RANK_OPS.find((o) => o.value === op)?.label ?? op} ${n}`;
+    }
+    const [base, scope] = value.split(":");
+    const scopeLabel = scope && field.scopes?.find((s) => s.value === scope)?.label;
+    return scopeLabel ? `${labelOf(base)} (${scopeLabel})` : labelOf(value);
+  });
   const verb = opLabel(field, condition.op, named.length);
   if (VALUELESS_OPS.has(condition.op)) return `${subject} ${verb}`;
   if (condition.op === "within_last") return `${subject} ${verb} ${named[0] ?? "…"} days`;

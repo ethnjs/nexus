@@ -1437,6 +1437,8 @@ export interface MemberFilterOptions {
   shift_days: FilterOptionGroup[];
   lunch_categories: FilterOptionGroup[];
   event_preferences: FilterOptionGroup[];
+  // Per track, the events a member can be assigned to there.
+  assignments: FilterOptionGroup[];
   competition_events: FilterOptionItem[];
   volunteer_events: FilterOptionItem[];
   // Schools' short names and employers, merged where they read the same.
@@ -1480,6 +1482,8 @@ export const membersApi = {
       // table doesn't have to restate what its saved columns need.
       fields?: MembershipField[];
       filters?: Record<string, string[]>;
+      // The roster filter, already pruned of half-built rows.
+      filter?: FilterGroup;
       // Identity/authority narrowing — what the role pickers ask for. A picker
       // is this roster with a name search and a role bound on it, which is why
       // there is no separate search endpoint any more.
@@ -1496,6 +1500,9 @@ export const membersApi = {
     if (opts.roleId !== undefined) params.set("role_id", String(opts.roleId));
     if (opts.excludeRoleId !== undefined) params.set("exclude_role_id", String(opts.excludeRoleId));
     if (opts.maxRank !== undefined) params.set("max_rank", String(opts.maxRank));
+    if (opts.filter && opts.filter.conditions.length > 0) {
+      params.set("filter", JSON.stringify(opts.filter));
+    }
     for (const [key, values] of Object.entries(opts.filters ?? {})) {
       // Repeated rather than comma-joined: a lunch value can legitimately
       // contain a comma ("Rice, beans").
@@ -2744,6 +2751,7 @@ export interface DisplayConfigSectionCatalogItem {
 // lunch category in `group`; every other field leaves it null.
 export type FilterOp =
   | "any_of"
+  | "all_of"
   | "none_of"
   | "empty"
   | "not_empty"

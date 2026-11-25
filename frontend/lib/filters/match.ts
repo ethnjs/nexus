@@ -12,6 +12,8 @@ function conditionMatches<Row>(
   switch (condition.op) {
     case "any_of":
       return values.some((value) => condition.values.includes(value));
+    case "all_of":
+      return condition.values.every((value) => values.includes(value));
     case "none_of":
       return !values.some((value) => condition.values.includes(value));
     case "empty":
