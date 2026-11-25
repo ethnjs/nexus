@@ -3,7 +3,7 @@
 Run everything from `backend/` through uv (`uv run ...`); bare `python` may not be the project venv.
 
 ```bash
-uv run uvicorn app.main:app --reload --port 8001
+uv run uvicorn app.main:app --reload
 uv run python -u -m pytest tests/api/test_forms.py -q   # see "Tests" below
 uv run ruff check --fix && uv run ruff format          # the pre-commit hook and CI run the same
 uv run ty check                                        # likewise

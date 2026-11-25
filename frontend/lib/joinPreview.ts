@@ -1,7 +1,7 @@
 import type { JoinPreviewResponse, JoinPreviewTournament } from "@/lib/api";
 import { tournamentYear } from "@/lib/tournamentDisplay";
 
-const API_URL = process.env.API_URL ?? "http://localhost:8001";
+const API_URL = process.env.API_URL ?? "http://localhost:8000";
 const API_KEY = process.env.API_KEY ?? "";
 
 /**

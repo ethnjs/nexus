@@ -11,7 +11,7 @@ Setup, the release process and PR conventions for humans are in `CONTRIBUTING.md
 
 ## Running things
 
-- Backend dev server, from `backend/`: `uv run uvicorn app.main:app --reload --port 8001`. Dev startup migrates and seeds `admin@nexus.dev` / `admin1234` and `user1@nexus.dev`..`user15@nexus.dev` / `user1234`. The frontend proxy expects port 8001.
+- Backend dev server, from `backend/`: `uv run uvicorn app.main:app --reload`. Dev startup migrates and seeds `admin@nexus.dev` / `admin1234` and `user1@nexus.dev`..`user15@nexus.dev` / `user1234`.
 - Frontend, from `frontend/`: `pnpm dev`.
 - Postgres runs in Docker (`docker-compose up -d` in `backend/`). Each git worktree gets its own database through the post-checkout hook (`scripts/setup-worktree-db.sh`).
 
