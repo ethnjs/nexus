@@ -3,6 +3,7 @@
 
 from datetime import UTC, datetime
 
+from app.core.tournament.display_config import DEFAULT_SECTION_ORDER
 from app.models.models import (
     Form,
     FormField,
@@ -878,10 +879,11 @@ def test_panel_contact_survives_hiding_every_section(client, td_user, td_tournam
     db.commit()
 
     login(client, "td@test.com", "tdpass")
+    every_section_off = [{"id": section_id, "hidden": True} for section_id in DEFAULT_SECTION_ORDER]
     assert (
         client.put(
             f"/tournaments/{td_tournament.id}/display-config/",
-            json={"members_panel": {"hidden": [], "sections": []}},
+            json={"members_panel": {"sections": every_section_off}},
         ).status_code
         == 200
     )
@@ -890,6 +892,36 @@ def test_panel_contact_survives_hiding_every_section(client, td_user, td_tournam
         f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
     ).json()
     assert body["user"]["email"] == u.email
+    assert "roles" not in body
+    assert "shirt_size" not in body["user"]
+
+
+def test_panel_loads_exactly_the_sections_it_renders(client, td_user, td_tournament, db):
+    """A section turned off by its own flag isn't loaded, and a built-in
+    missing from the saved list is, because the panel appends and renders it."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert (
+        client.put(
+            f"/tournaments/{td_tournament.id}/display-config/",
+            json={"members_panel": {"sections": [{"id": "membership", "hidden": True}]}},
+        ).status_code
+        == 200
+    )
+
+    body = client.get(
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
+    ).json()
+    for key in ("roles", "track_statuses", "source", "onboarding"):
+        assert key not in body, key
+    for key in ("availability", "assignments", "lunch", "event_preferences"):
+        assert key in body, key
+    assert "shirt_size" in body["user"]
+    # Custom sections aren't appended: a saved list without one has none.
+    assert "custom_responses" not in body
 
 
 def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td_tournament, db):
