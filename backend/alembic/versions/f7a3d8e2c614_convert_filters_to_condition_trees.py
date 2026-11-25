@@ -62,7 +62,8 @@ def _roster_rows(field: str, values: list[str]) -> list[dict] | None:
             if ANY in rights or len(picked) == 2:
                 return None
             if picked:
-                rows.append(_cond(field, sorted(picked), group=group))
+                op_ = "not_empty" if picked == {"assigned"} else "empty"
+                rows.append(_cond(field, op_=op_, group=group))
         elif field == "lunch":
             unanswered = LUNCH_UNANSWERED in rights
             if ANY in rights and unanswered:

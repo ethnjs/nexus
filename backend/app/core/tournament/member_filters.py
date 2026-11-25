@@ -250,26 +250,6 @@ def _shifts_clause(session, tournament, pairs: list[tuple[str, str]]):
     )
 
 
-def _assigned_clause(pairs: list[tuple[str, str]]):
-    # Per track, like track status — "who's unassigned for Day 1". ANY (an
-    # unnarrowed chip) and both values on one track narrow nothing.
-    clauses = []
-    for track_id, value in pairs:
-        if not track_id.isdigit():
-            continue
-        staffed = exists().where(
-            (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-            & (TournamentTrackAssignment.tournament_track_id == int(track_id))
-        )
-        if value == "assigned":
-            clauses.append(staffed)
-        elif value == "unassigned":
-            clauses.append(~staffed)
-        elif value == ANY:
-            clauses.append(true())
-    return or_(*clauses) if clauses else None
-
-
 def _experience_clause(model, values: list[str] | None):
     """Experience is the user's, not the membership's, so it joins through
     user_id. None for `values` asks for any experience at all."""
@@ -310,6 +290,21 @@ def _affiliation_clause(session, values: list[str] | None):
     )
 
 
+def _assignments_clause(track: str | None, values: list[str] | None):
+    """Staffed on `track`: on one of the named events, or at all for None."""
+    if not (track and track.isdigit()):
+        return None
+    condition = (TournamentTrackAssignment.membership_id == TournamentMembership.id) & (
+        TournamentTrackAssignment.tournament_track_id == int(track)
+    )
+    if values is not None:
+        event_ids = [int(value) for value in values if value.isdigit()]
+        if not event_ids:
+            return None
+        condition &= TournamentTrackAssignment.tournament_event_id.in_(event_ids)
+    return exists().where(condition)
+
+
 def _year_levels_clause(values: list[str]):
     user = aliased(User)
     clauses = []
@@ -339,15 +334,17 @@ def _year_levels_clause(values: list[str]):
 PAIRED_FIELDS = frozenset({"track", "assigned", "lunch", "event_pref", "shift"})
 _ANY_NONE = frozenset({"any_of", "none_of"})
 _ALL_OPS = _ANY_NONE | {"empty", "not_empty"}
+# "Has every one of", for fields a member can hold several values of at once.
+_MANY_OPS = _ALL_OPS | {"all_of"}
 ROSTER_FIELD_OPS: dict[str, frozenset[str]] = {
-    "role": _ALL_OPS,
+    "role": _MANY_OPS,
     "track": _ALL_OPS,
-    "assigned": _ANY_NONE,
+    "assigned": _MANY_OPS,
     "lunch": _ALL_OPS,
     "event_pref": _ALL_OPS,
     "shift": _ALL_OPS,
-    "competition_event": _ALL_OPS,
-    "volunteer_event": _ALL_OPS,
+    "competition_event": _MANY_OPS,
+    "volunteer_event": _MANY_OPS,
     "affiliation": _ALL_OPS,
     "age": _ANY_NONE,
     "year_level": _ANY_NONE,
@@ -411,6 +408,8 @@ def _present_clause(ctx: _Context, field: str, group: str | None):
         return _experience_clause(UserVolunteerExperience, None)
     if field == "affiliation":
         return _affiliation_clause(ctx.session, None)
+    if field == "assigned":
+        return _assignments_clause(group, None)
     if field == "lunch":
         return _lunch_clause(group or "", ANY)
     if not (group and group.isdigit()):
@@ -452,7 +451,7 @@ def _values_clause(ctx: _Context, field: str, group: str | None, values: list[st
         case "shift":
             return _shifts_clause(ctx.session, ctx.tournament, pairs)
         case "assigned":
-            return _assigned_clause(pairs)
+            return _assignments_clause(group, values)
         case "competition_event":
             return _experience_clause(UserCompetitionExperience, values)
         case "volunteer_event":
@@ -474,6 +473,14 @@ def _condition_clause(ctx: _Context, condition: FilterCondition):
         if present is None:
             return None
         return ~present if condition.op == "empty" else present
+    if condition.op == "all_of":
+        each = [
+            clause
+            for value in condition.values
+            if (clause := _values_clause(ctx, condition.field, condition.group, [value]))
+            is not None
+        ]
+        return and_(*each) if each else None
     clause = _values_clause(ctx, condition.field, condition.group, condition.values)
     if clause is None:
         return None
@@ -530,18 +537,18 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
         if membership.age_disclosure != "consented":
             return False
         tournament = membership.tournament
-        if (
-            "over_18" in age_flags
-            and tournament.collect_is_over_18
-            and membership.is_over_18 is True
-        ):
-            return True
-        if (
-            "over_21" in age_flags
-            and tournament.collect_is_over_21
-            and membership.is_over_21 is True
-        ):
-            return True
+        flags = (
+            ("18", tournament.collect_is_over_18, membership.is_over_18),
+            ("21", tournament.collect_is_over_21, membership.is_over_21),
+        )
+        # `is True` / `is False`: an unknown flag is neither over nor under.
+        for age, collected, over in flags:
+            if not collected:
+                continue
+            if f"over_{age}" in age_flags and over is True:
+                return True
+            if f"under_{age}" in age_flags and over is False:
+                return True
         return False
 
     return [m for m in memberships if matches(m)]
@@ -772,6 +779,11 @@ def build_filter_options(db, tournament) -> dict:
         "shift_days": list(shift_days.values()),
         "lunch_categories": lunch_categories,
         "event_preferences": event_preferences,
+        # Per track, the events someone can be assigned to there.
+        "assignments": [
+            {"value": track["value"], "label": track["label"], "options": events_on(track["value"])}
+            for track in tracks
+        ],
         "competition_events": experience_events(UserCompetitionExperience),
         "volunteer_events": experience_events(UserVolunteerExperience),
         "affiliations": [

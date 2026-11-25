@@ -9,7 +9,7 @@ from app.schemas.tournament.display_config import FilterCondition, FilterGroup
 FILTER_GROUP_OPS = frozenset({"and", "or"})
 VALUELESS_OPS = frozenset({"empty", "not_empty"})
 DATE_OPS = frozenset({"before", "after"})
-FILTER_OPS = frozenset({"any_of", "none_of", "within_last"}) | VALUELESS_OPS | DATE_OPS
+FILTER_OPS = frozenset({"any_of", "all_of", "none_of", "within_last"}) | VALUELESS_OPS | DATE_OPS
 
 
 def _reject(detail: str) -> NoReturn:

@@ -1570,6 +1570,43 @@ class TestRosterFilterConditions:
         }
         assert self._roster(client, td_tournament.id, neither) == {"carol@example.com"}
 
+    def test_all_of_needs_every_value(self, client, db, td_user, td_tournament):
+        both = grant_role(db, td_tournament, _db_user_for_filter(db, "alice@example.com"), "Runner")
+        grant_role(db, td_tournament, both.user, "Volunteer")
+        grant_role(db, td_tournament, _db_user_for_filter(db, "bob@example.com"), "Runner")
+        db.commit()
+        runner = get_role_id_by_label(db, td_tournament.id, "Runner")
+        volunteer = get_role_id_by_label(db, td_tournament.id, "Volunteer")
+
+        login(client, "td@test.com", "tdpass")
+        roles = {"field": "role", "op": "all_of", "values": [str(runner), str(volunteer)]}
+        assert self._roster(client, td_tournament.id, {"conditions": [roles]}) == {
+            "alice@example.com"
+        }
+
+    def test_under_age_is_a_known_flag_not_a_missing_one(self, client, db, td_user, td_tournament):
+        """Under 18 means a consented member known to be under it, which "none of
+        18+" isn't: that also lets in everyone whose age is unknown."""
+        from app.models.models import User as UserModel
+
+        teen = _db_user_for_filter(db, "teen@example.com")
+        db.query(UserModel).filter(UserModel.id == teen.id).one().date_of_birth = date.today()
+        _make_membership(db, td_tournament.id, teen.id).age_disclosure = "consented"
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "anon@example.com").id)
+        td_tournament.collect_is_over_18 = True
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        under = {"field": "age", "values": ["under_18"]}
+        not_over = {"field": "age", "op": "none_of", "values": ["over_18"]}
+        assert self._roster(client, td_tournament.id, {"conditions": [under]}) == {
+            "teen@example.com"
+        }
+        assert self._roster(client, td_tournament.id, {"conditions": [not_over]}) == {
+            "teen@example.com",
+            "anon@example.com",
+        }
+
     def test_unknown_condition_is_skipped(self, client, db, td_user, td_tournament):
         _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
         db.commit()

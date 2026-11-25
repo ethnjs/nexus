@@ -160,7 +160,7 @@ def test_put_display_config_saves_assigned_filter(client, td_user, td_tournament
     silently fails to persist — the write is fire-and-forget, so a rejected
     field is invisible to the coordinator who set it."""
     login(client, "td@test.com", "tdpass")
-    unassigned = _filter(_cond("assigned", "unassigned", group="3"))
+    unassigned = _filter(_cond("assigned", group="3", op="empty"))
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"members_table": {"filter": unassigned}},
@@ -214,7 +214,7 @@ def test_put_display_config_saves_filter_conditions(client, td_user, td_tourname
         {"op": "xor", "conditions": []},
         {"field": "track", "values": ["declined"]},
         {"field": "role", "group": "7", "values": ["3"]},
-        {"field": "assigned", "group": "7", "op": "empty"},
+        {"field": "age", "op": "empty"},
     ],
 )
 def test_put_display_config_rejects_malformed_filter(client, td_user, td_tournament, condition):
@@ -288,7 +288,7 @@ def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournamen
         },
         "assignment_card:all": {
             "hidden": ["card_field:availability", "card_track:event_preferences:7"],
-            "filter": _filter(_cond("assigned", "unassigned", group="7"), _cond("age", "over_18")),
+            "filter": _filter(_cond("assigned", group="7", op="empty"), _cond("age", "over_18")),
         },
     }
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
