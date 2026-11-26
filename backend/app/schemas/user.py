@@ -85,6 +85,8 @@ class AdminUserListResponse(AdminUserSlimResponse):
     year_level: int | None = None
     employer: str | None = None
     tournament_ids: list[int] = Field(default=[], validation_alias="memberships")
+    # Set by the route; the same test as the dashboard's incomplete-profile banner.
+    is_profile_complete: bool = False
 
     @field_validator("tournament_ids", mode="before")
     @classmethod

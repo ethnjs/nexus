@@ -12,27 +12,13 @@ import {
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
 import {
-  EVENT_FILTER_UNSET,
-  EVENT_TYPE_OPTIONS,
-  EVENTS_FILTER_KEYS,
-  EventsFilterModal,
-  type EventsFilterState,
-  eventBuildingOptions,
-  eventCategoryOptions,
-  eventPassesFilters,
-  eventShiftOptions,
-  eventsFilterFromStored,
-  eventsFilterToStored,
-  eventTrackOptions,
-  isEventsFilterActive,
-} from "@/components/tournament/events/EventsFilterModal";
-import {
   DEFAULT_EVENT_COLUMNS,
   EVENT_COLUMN_WIDTHS,
   type EventColumn,
   resolveEventColumns,
   trackFamilyOf,
 } from "@/components/tournament/events/eventColumns";
+import { eventFilterFields } from "@/components/tournament/events/eventFilterFields";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import {
   MASS_EVENT_EDITOR_WIDTH,
@@ -47,8 +33,8 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState } from "@/components/ui/FilterModal";
 import {
   IconCopy,
   IconEvents,
@@ -75,10 +61,10 @@ import {
   type DisplayConfig,
   type DisplayConfigSurface,
   displayConfigApi,
+  type FilterGroup,
   type Role,
   rolesApi,
   type TournamentBuilding,
-  type TournamentDivision,
   type TournamentEvent,
   type TournamentEventInput,
   type TournamentShift,
@@ -100,6 +86,9 @@ import {
   isEventSortField,
 } from "@/lib/eventSort";
 import { toTrackDetailInput } from "@/lib/eventTrackDetails";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap, filterUses } from "@/lib/filters/model";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { handleGridArrows } from "@/lib/gridNav";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
 import { rowActivation } from "@/lib/rowActivation";
@@ -231,15 +220,10 @@ export default function EventsPage() {
   );
 
   const [search, setSearch] = useState("");
-  // Committed filters only — the modal keeps its own draft until Apply.
-  // Filters, sort and columns are all this viewer's own display config, so
-  // they arrive in the one GET below and are written back by persistView.
-  // Per member and per tournament by construction now, which is what the old
-  // localStorage key had to spell out by hand — and they follow a
-  // coordinator to whatever device they open the tournament on.
-  const [filters, setFilters] = useState<EventsFilterState>(() =>
-    emptyFilterState(EVENTS_FILTER_KEYS),
-  );
+  // The applied filter, with sort and columns part of this viewer's display
+  // config: read in the one GET below, written back by persistView.
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
+  const savedFilters = useSavedFilters(EVENTS_TABLE, tournamentId);
   // Gates the table: filtering is client-side, so rendering before the saved
   // filters land would show every event for a frame and then narrow.
   const [viewReady, setViewReady] = useState(false);
@@ -401,7 +385,7 @@ export default function EventsPage() {
         // stomp filters the coordinator changed while that modal was open.
         setViewReady((already) => {
           if (already) return true;
-          setFilters(eventsFilterFromStored(surface?.filters));
+          setFilter(surface?.filter ?? emptyFilter());
           setSortRules(
             surface?.sorts
               ? sortRulesFromStored(surface.sorts, isEventSortField)
@@ -422,10 +406,10 @@ export default function EventsPage() {
     [tournamentId],
   );
 
-  const applyFilters = useCallback(
-    (next: EventsFilterState) => {
-      setFilters(next);
-      persistView({ filters: eventsFilterToStored(next) });
+  const applyFilter = useCallback(
+    (next: FilterGroup) => {
+      setFilter(next);
+      persistView({ filter: next });
     },
     [persistView],
   );
@@ -530,7 +514,7 @@ export default function EventsPage() {
   const showsStaffing =
     tableColumns.some((c) => trackFamilyOf(c.key) === "staffing") ||
     sortRules.some((rule) => rule.field === "staffing") ||
-    filters.staffing.size > 0;
+    filterUses(filter, "staffing");
 
   // Only fetched while something staffing-shaped is on (a column, the sort,
   // the filter) — a whole tournament's assignments isn't free.
@@ -550,30 +534,23 @@ export default function EventsPage() {
     };
   }, [tournamentId, canManageEvents, showsStaffing, refreshKey]);
 
-  const divisionOptions = useMemo(() => {
-    const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({
-      value: d,
-      label: `Division ${d}`,
-    }));
-    return (events ?? []).some((e) => e.division === null)
-      ? [...opts, { value: EVENT_FILTER_UNSET, label: "No division" }]
-      : opts;
-  }, [selectedTournament, events]);
-
-  const categoryOptions = useMemo(() => eventCategoryOptions(events ?? []), [events]);
-  const trackOptions = useMemo(() => eventTrackOptions(events ?? []), [events]);
-  const buildingOptions = useMemo(() => eventBuildingOptions(events ?? []), [events]);
-  const shiftOptions = useMemo(() => eventShiftOptions(events ?? []), [events]);
+  const filterFields = useMemo(
+    () =>
+      eventFilterFields(events ?? [], {
+        divisions: selectedTournament?.division,
+        showsTrack: ALL_TRACKS,
+        assignmentsFor: (id) => byEvent.get(id) ?? NO_ASSIGNMENTS,
+      }),
+    [events, selectedTournament, byEvent],
+  );
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
 
   const visibleEvents = useMemo(() => {
     if (!events) return [];
     const q = search.trim().toLowerCase();
     const filtered = events.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      return eventPassesFilters(e, filters, {
-        assignmentsFor: (id) => byEvent.get(id) ?? NO_ASSIGNMENTS,
-        showsTrack: ALL_TRACKS,
-      });
+      return matchesFilter(e, filter, filterFieldMap);
     });
     return sortRows(
       filtered,
@@ -582,7 +559,7 @@ export default function EventsPage() {
         eventSortValue(event, field, (id) => byEvent.get(id) ?? NO_ASSIGNMENTS, ALL_TRACKS),
       eventSortTiebreak,
     );
-  }, [events, search, filters, sortRules, byEvent]);
+  }, [events, search, filter, filterFieldMap, sortRules, byEvent]);
 
   const toggleVisibleEvent = useCallback(
     (id: number) =>
@@ -835,7 +812,8 @@ export default function EventsPage() {
     );
   }
 
-  const isFiltered = search.trim() !== "" || isEventsFilterActive(filters);
+  const filterCount = countActiveConditions(filter);
+  const isFiltered = search.trim() !== "" || filterCount > 0;
 
   // A header that sorts its column. The default chain isn't shown as a
   // header state — it's the absence of a choice, and clicking replaces it.
@@ -974,9 +952,13 @@ export default function EventsPage() {
               </div>
               <FilterButton
                 iconOnly={compactToolbar}
-                active={isEventsFilterActive(filters)}
+                count={filterCount}
                 onOpen={() => setShowFilterModal(true)}
-                onClear={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+                onClear={() => applyFilter(emptyFilter())}
+                saved={savedFilters}
+                applied={filter}
+                onApplySaved={applyFilter}
+                hotkey
               />
               <DisplayButton
                 iconOnly={compactToolbar}
@@ -1142,15 +1124,12 @@ export default function EventsPage() {
       )}
 
       {showFilterModal && (
-        <EventsFilterModal
-          divisionOptions={divisionOptions}
-          typeOptions={EVENT_TYPE_OPTIONS}
-          categoryOptions={categoryOptions}
-          trackOptions={trackOptions}
-          buildingOptions={buildingOptions}
-          shiftOptions={shiftOptions}
-          filters={filters}
-          onApply={applyFilters}
+        <FilterBuilderModal
+          title="Filter events"
+          fields={filterFields}
+          filter={filter}
+          saved={savedFilters}
+          onApply={applyFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}

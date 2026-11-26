@@ -33,6 +33,7 @@ from app.api.routes.tournament import join_codes as tournament_join_codes
 from app.api.routes.tournament import memberships as tournament_memberships
 from app.api.routes.tournament import onboarding as tournament_onboarding
 from app.api.routes.tournament import roles as tournament_roles
+from app.api.routes.tournament import saved_filters as tournament_saved_filters
 from app.api.routes.tournament import setup_checklist as tournament_setup_checklist
 from app.api.routes.tournament import shifts as tournament_shifts
 from app.api.routes.tournament import tracks as tournament_tracks
@@ -157,6 +158,7 @@ app.include_router(
 app.include_router(tournament_display_config.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_assignments.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_export_presets.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_saved_filters.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router, prefix="", dependencies=[api_key_dependency])

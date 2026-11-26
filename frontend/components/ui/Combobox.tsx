@@ -37,11 +37,17 @@ interface ComboboxProps<T> {
   emptyMessage?: string;
   /** Keep the list open after a pick, for a field that clears itself to take another. */
   stayOpenOnSelect?: boolean;
+  /** Leave the field after a pick, so the list can't reopen over what the
+   *  pick just added. */
+  blurOnSelect?: boolean;
   onBlur?: () => void;
   autoFocus?: boolean;
   /** Fires on a pick from the list only, never on typing that happens to
    *  match an option exactly. */
   onSelect?: (option: T) => void;
+  /** `options` are already the matches for `value`, best first (the caller
+   *  ranks them its own way): shown as given, with no free-text row. */
+  prefiltered?: boolean;
 }
 
 const CUSTOM_THRESHOLD = 3;
@@ -68,9 +74,11 @@ export function Combobox<T>({
   getDisabledReason,
   emptyMessage,
   stayOpenOnSelect = false,
+  blurOnSelect = false,
   onBlur,
   autoFocus,
   onSelect,
+  prefiltered = false,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false);
   // Whether the text has been edited since the field took focus. Until it
@@ -82,8 +90,11 @@ export function Combobox<T>({
   const query = value.trim().toLowerCase();
   // Focusing an empty field shows every option (up to maxResults) rather
   // than nothing — lets the TD see what's available before typing anything.
-  const matches =
-    query && typed
+  const matches = prefiltered
+    ? open
+      ? options.slice(0, maxResults)
+      : []
+    : query && typed
       ? options.filter((o) => getSearchText(o).toLowerCase().includes(query)).slice(0, maxResults)
       : open
         ? options.slice(0, maxResults)
@@ -94,7 +105,12 @@ export function Combobox<T>({
   // value as unmatched — which the strict hint below turns into an error.
   const exactMatch = options.some((o) => getLabel(o).toLowerCase() === query);
   const showCustomRow =
-    allowFreeText && typed && query.length > 0 && !exactMatch && matches.length < CUSTOM_THRESHOLD;
+    !prefiltered &&
+    allowFreeText &&
+    typed &&
+    query.length > 0 &&
+    !exactMatch &&
+    matches.length < CUSTOM_THRESHOLD;
   const showEmptyRow = !!emptyMessage && matches.length === 0 && !showCustomRow;
   const dropdownOpen = open && (matches.length > 0 || showCustomRow || showEmptyRow);
 
@@ -142,6 +158,8 @@ export function Combobox<T>({
       pick(index);
     } else if (e.key === "Escape" && open) {
       e.preventDefault();
+      // Closes the list, not a modal the field sits in.
+      e.stopPropagation();
       setOpen(false);
     }
   }
@@ -167,6 +185,7 @@ export function Combobox<T>({
     } else {
       setOpen(false);
     }
+    if (blurOnSelect) inputRef.current?.blur();
   }
 
   function handleSelectCustom() {
@@ -180,7 +199,8 @@ export function Combobox<T>({
     setActive(-1);
   }
 
-  const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && !exactMatch;
+  const showStrictHint =
+    !prefiltered && !open && !allowFreeText && value.trim().length > 0 && !exactMatch;
   const displayedError =
     error ??
     (showStrictHint ? "No matching option — select one from the list to continue." : undefined);

@@ -9,15 +9,7 @@ import {
   MassShiftEditor,
 } from "@/components/tournament/events/MassShiftEditor";
 import { SHIFT_PANEL_WIDTH, ShiftPanel } from "@/components/tournament/events/ShiftPanel";
-import {
-  SHIFTS_FILTER_KEYS,
-  ShiftsFilterModal,
-  type ShiftsFilterState,
-  shiftPassesFilters,
-  shiftsFilterFromStored,
-  shiftsFilterToStored,
-  shiftTrackOptions,
-} from "@/components/tournament/events/ShiftsFilterModal";
+import { shiftFilterFields } from "@/components/tournament/events/shiftFilterFields";
 import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { trackDays } from "@/components/tournament/TrackDayPicker";
 import { Badge } from "@/components/ui/Badge";
@@ -27,8 +19,8 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import {
   IconCalendar,
   IconCopy,
@@ -48,6 +40,7 @@ import {
   ApiError,
   type DisplayConfig,
   displayConfigApi,
+  type FilterGroup,
   type TournamentEvent,
   type TournamentShift,
   type TournamentShiftInput,
@@ -57,6 +50,9 @@ import {
   tournamentTracksApi,
 } from "@/lib/api";
 import { SHIFTS_TABLE } from "@/lib/displayConfigSurfaces";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap, isGroup } from "@/lib/filters/model";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { handleGridArrows } from "@/lib/gridNav";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
 import { rowActivation } from "@/lib/rowActivation";
@@ -146,9 +142,8 @@ export default function ShiftsPage() {
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<ShiftsFilterState>(() =>
-    emptyFilterState(SHIFTS_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
+  const savedFilters = useSavedFilters(SHIFTS_TABLE, tournamentId);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortRules, setSortRules] = useState<SortRule<ShiftSortField>[]>(DEFAULT_SHIFT_SORT);
   const [showSortModal, setShowSortModal] = useState(false);
@@ -243,7 +238,7 @@ export default function ShiftsPage() {
       .then((config) => {
         if (!current) return;
         const surface = config?.[SHIFTS_TABLE];
-        setFilters(shiftsFilterFromStored(surface?.filters));
+        setFilter(surface?.filter ?? emptyFilter());
         // A saved chain whose every field has since been dropped is no chain.
         const stored = sortRulesFromStored(surface?.sorts, isShiftSortField);
         setSortRules(stored.length > 0 ? stored : DEFAULT_SHIFT_SORT);
@@ -254,13 +249,31 @@ export default function ShiftsPage() {
     };
   }, [tournamentId, canManageEvents]);
 
-  const applyFilters = useCallback(
-    (next: ShiftsFilterState) => {
-      setFilters(next);
-      persistSurfaceView(tournamentId, SHIFTS_TABLE, { filters: shiftsFilterToStored(next) });
+  const applyFilter = useCallback(
+    (next: FilterGroup) => {
+      setFilter(next);
+      persistSurfaceView(tournamentId, SHIFTS_TABLE, { filter: next });
     },
     [tournamentId],
   );
+
+  const filterFields = useMemo(
+    () => shiftFilterFields(shifts ?? [], tracks, events ?? []),
+    [shifts, tracks, events],
+  );
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
+  // Narrowed to one day, new shifts go on it: the filter already says which
+  // day the TD is working on.
+  const filteredTrackId = useMemo(() => {
+    if (filter.op !== "and") return null;
+    const tracksPicked = filter.conditions.filter(
+      (c) => !isGroup(c) && c.field === "track" && c.op === "any_of",
+    );
+    const [only] = tracksPicked;
+    return tracksPicked.length === 1 && !isGroup(only) && only.values.length === 1
+      ? Number(only.values[0])
+      : null;
+  }, [filter]);
 
   const applySort = useCallback(
     (next: SortRule<ShiftSortField>[]) => {
@@ -278,7 +291,7 @@ export default function ShiftsPage() {
   const visibleShifts = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = (shifts ?? []).filter(
-      (s) => (!q || s.label.toLowerCase().includes(q)) && shiftPassesFilters(s, filters),
+      (s) => (!q || s.label.toLowerCase().includes(q)) && matchesFilter(s, filter, filterFieldMap),
     );
     return sortRows(
       list,
@@ -286,7 +299,7 @@ export default function ShiftsPage() {
       (shift, field) => shiftSortValue(shift, field, trackById),
       shiftSortTiebreak,
     );
-  }, [shifts, search, filters, sortRules, trackById]);
+  }, [shifts, search, filter, filterFieldMap, sortRules, trackById]);
 
   const selectedShifts = useMemo(
     () => (shifts ?? []).filter((s) => selectedIds.has(s.id)),
@@ -398,15 +411,7 @@ export default function ShiftsPage() {
           shift={null}
           tracks={tracks}
           events={events}
-          // Filtered to one day, new shifts go on it — the filter is already
-          // the TD saying which day they're working on.
-          defaultTrackId={
-            filters.track.size === 1
-              ? Number([...filters.track][0])
-              : tracks.length === 1
-                ? tracks[0].id
-                : null
-          }
+          defaultTrackId={filteredTrackId ?? (tracks.length === 1 ? tracks[0].id : null)}
           locked={locked}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}
@@ -502,7 +507,7 @@ export default function ShiftsPage() {
     shifts,
     events,
     tracks,
-    filters.track,
+    filteredTrackId,
     tournamentId,
     canManageEvents,
     isArchived,
@@ -679,9 +684,13 @@ export default function ShiftsPage() {
             </div>
             <FilterButton
               iconOnly={compactToolbar}
-              active={isFilterActive(filters)}
+              count={countActiveConditions(filter)}
               onOpen={() => setShowFilterModal(true)}
-              onClear={() => applyFilters(emptyFilterState(SHIFTS_FILTER_KEYS))}
+              onClear={() => applyFilter(emptyFilter())}
+              saved={savedFilters}
+              applied={filter}
+              onApplySaved={applyFilter}
+              hotkey
             />
             <SortButton
               iconOnly={compactToolbar}
@@ -862,10 +871,12 @@ export default function ShiftsPage() {
       )}
 
       {showFilterModal && (
-        <ShiftsFilterModal
-          trackOptions={shiftTrackOptions(tracks)}
-          filters={filters}
-          onApply={applyFilters}
+        <FilterBuilderModal
+          title="Filter shifts"
+          fields={filterFields}
+          filter={filter}
+          saved={savedFilters}
+          onApply={applyFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}

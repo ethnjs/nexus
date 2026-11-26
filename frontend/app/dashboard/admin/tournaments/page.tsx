@@ -2,13 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
-import {
-  seasonsOf,
-  TOURNAMENTS_FILTER_KEYS,
-  TournamentsFilterModal,
-  type TournamentsFilterState,
-  tournamentPassesFilters,
-} from "@/components/tournament/TournamentsFilterModal";
+import { seasonsOf, tournamentFilterFields } from "@/components/tournament/tournamentFilterFields";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Badge } from "@/components/ui/Badge";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
@@ -16,8 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { HoverCard } from "@/components/ui/HoverCard";
 import { IconArchive, IconRestore, IconSearch, IconTrash, IconTrophy } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
@@ -26,7 +20,15 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SortButton } from "@/components/ui/SortButton";
 import { SortModal } from "@/components/ui/SortModal";
 import table from "@/components/ui/Table.module.css";
-import { type AdminTournament, ApiError, adminTournamentsApi, tournamentsApi } from "@/lib/api";
+import {
+  type AdminTournament,
+  ApiError,
+  adminTournamentsApi,
+  type FilterGroup,
+  tournamentsApi,
+} from "@/lib/api";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
 import { rowActivation } from "@/lib/rowActivation";
 import { type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { stickyHeader } from "@/lib/stickyHeader";
@@ -415,9 +417,7 @@ export default function AdminTournamentsPage() {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   // The dashboard's filters and sorts, shared with it rather than redefined.
-  const [filters, setFilters] = useState<TournamentsFilterState>(() =>
-    emptyFilterState(TOURNAMENTS_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
   const [sortRules, setSortRules] =
     useState<SortRule<TournamentSortField>[]>(DEFAULT_TOURNAMENT_SORT);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -442,11 +442,17 @@ export default function AdminTournamentsPage() {
       });
   }, []);
 
+  const filterFields = useMemo(
+    () => tournamentFilterFields(seasonsOf(tournaments ?? []), { withStatus: true }),
+    [tournaments],
+  );
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
+
   const visible = useMemo(() => {
     const rows = tournaments ?? [];
     const query = search.trim().toLowerCase();
     const matching = rows.filter((t) => {
-      if (!tournamentPassesFilters(t, filters)) return false;
+      if (!matchesFilter(t, filter, filterFieldMap)) return false;
       if (!query) return true;
       return (
         t.name.toLowerCase().includes(query) ||
@@ -457,7 +463,7 @@ export default function AdminTournamentsPage() {
       );
     });
     return sortRows(matching, sortRules, tournamentSortValue, tournamentSortTiebreak);
-  }, [tournaments, search, filters, sortRules]);
+  }, [tournaments, search, filter, filterFieldMap, sortRules]);
 
   /** Replaces one row in place — archive and unarchive both return the row. */
   function replaceRow(updated: { id: number }) {
@@ -487,7 +493,8 @@ export default function AdminTournamentsPage() {
   // and would otherwise outlive the table that registered it.
   useEffect(() => clearPanel, [clearPanel]);
 
-  const isFiltered = search.trim() !== "" || isFilterActive(filters);
+  const filterCount = countActiveConditions(filter);
+  const isFiltered = search.trim() !== "" || filterCount > 0;
 
   return (
     <>
@@ -522,9 +529,10 @@ export default function AdminTournamentsPage() {
           />
         </div>
         <FilterButton
-          active={isFilterActive(filters)}
+          count={filterCount}
           onOpen={() => setShowFilterModal(true)}
-          onClear={() => setFilters(emptyFilterState(TOURNAMENTS_FILTER_KEYS))}
+          onClear={() => setFilter(emptyFilter())}
+          hotkey
         />
         <SortButton
           active={!sameSortRules(sortRules, DEFAULT_TOURNAMENT_SORT)}
@@ -534,11 +542,11 @@ export default function AdminTournamentsPage() {
       </div>
 
       {showFilterModal && (
-        <TournamentsFilterModal
-          withStatus
-          seasons={seasonsOf(tournaments ?? [])}
-          filters={filters}
-          onApply={setFilters}
+        <FilterBuilderModal
+          title="Filter tournaments"
+          fields={filterFields}
+          filter={filter}
+          onApply={setFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}

@@ -42,6 +42,8 @@ interface SplitButtonProps {
   label: string;
   /** Rendered before the label on the primary segment. */
   icon?: ReactNode;
+  /** Rendered after the label, e.g. a count of what's applied. */
+  badge?: ReactNode;
   /** Primary segment shows only `icon`; `label` becomes its tooltip and
    *  accessible name. For a compact spot like a panel header. */
   iconOnly?: boolean;
@@ -72,6 +74,7 @@ interface SplitButtonProps {
 export function SplitButton({
   label,
   icon,
+  badge,
   iconOnly = false,
   onClick,
   options = [],
@@ -125,6 +128,7 @@ export function SplitButton({
             {icon}
             {icon ? " " : null}
             {label}
+            {badge}
           </>
         )}
       </Button>

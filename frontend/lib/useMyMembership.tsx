@@ -47,6 +47,11 @@ export function MyMembershipProvider({
   );
 }
 
+/** The viewer's membership context, or null outside a tournament. */
+export function useMyMembershipIfAny(): MyMembershipContextValue | null {
+  return useContext(MyMembershipContext);
+}
+
 export function useMyMembership() {
   const ctx = useContext(MyMembershipContext);
   if (!ctx) throw new Error("useMyMembership must be used within MyMembershipProvider");

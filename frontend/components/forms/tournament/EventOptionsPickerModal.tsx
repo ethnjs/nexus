@@ -2,34 +2,21 @@
 
 import { useMemo, useState } from "react";
 import type { EditableOption } from "@/components/forms/builder/OptionsEditor";
-import {
-  EVENT_FILTER_UNSET,
-  eventCategoryKey,
-  eventCategoryOptions,
-} from "@/components/tournament/events/EventsFilterModal";
+import { eventFilterFields } from "@/components/tournament/events/eventFilterFields";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import {
-  emptyFilterState,
-  FilterModal,
-  type FilterOption,
-  type FilterSectionConfig,
-  type FilterState,
-  filterAllows,
-  isFilterActive,
-} from "@/components/ui/FilterModal";
-import { IconArrowDown, IconSearch } from "@/components/ui/Icons";
+import { IconArrowDown, IconEvents, IconSearch } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import type { TournamentDivision, TournamentEvent } from "@/lib/api";
+import type { FilterGroup, TournamentDivision, TournamentEvent } from "@/lib/api";
 import { eventFirstDay, eventName, eventNameWithDivision } from "@/lib/eventDisplay";
-
-const PICKER_FILTER_KEYS = ["division", "type", "category"] as const;
-type PickerFilterKey = (typeof PICKER_FILTER_KEYS)[number];
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
 
 const UNCATEGORIZED = "__uncategorized__";
 
@@ -48,11 +35,6 @@ const GROUP_MODE_OPTIONS = [
   { value: "name", label: "Event Name" },
   { value: "category", label: "Category" },
   { value: "related", label: "Related" },
-];
-
-const TYPE_OPTIONS = [
-  { value: "standard", label: "Standard" },
-  { value: "trial", label: "Trial" },
 ];
 
 function sortValue(e: TournamentEvent, field: SortField): string | number {
@@ -202,9 +184,7 @@ export function EventOptionsPickerModal({
   // I browsing right now" filter, not a standing view, so persisting it
   // (as the events page's display config does) would silently carry over into
   // the next bulk-add session with no visible reason why.
-  const [filters, setFilters] = useState<FilterState<PickerFilterKey>>(() =>
-    emptyFilterState(PICKER_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -217,26 +197,18 @@ export function EventOptionsPickerModal({
   );
   const hiddenCount = events.length - browsableEvents.length;
 
-  const divisionOptions = useMemo(() => {
-    const divisions = new Set(
-      browsableEvents.map((e) => e.division).filter((d): d is TournamentDivision => d != null),
-    );
-    const opts = [...divisions].sort().map((d) => ({ value: d, label: `Division ${d}` }));
-    return browsableEvents.some((e) => e.division === null)
-      ? [...opts, { value: EVENT_FILTER_UNSET, label: "No division" }]
-      : opts;
-  }, [browsableEvents]);
-
-  const categoryOptions = useMemo(() => eventCategoryOptions(browsableEvents), [browsableEvents]);
+  // The events table's fields, every track counting.
+  const filterFields = useMemo(
+    () => eventFilterFields(browsableEvents, { showsTrack: () => true }),
+    [browsableEvents],
+  );
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
 
   const visibleEvents = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = browsableEvents.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      if (!filterAllows(filters.division, e.division ?? EVENT_FILTER_UNSET)) return false;
-      if (!filterAllows(filters.type, e.event_type)) return false;
-      if (!filterAllows(filters.category, eventCategoryKey(e))) return false;
-      return true;
+      return matchesFilter(e, filter, filterFieldMap);
     });
     return [...filtered].sort((a, b) => {
       const av = sortValue(a, sortField);
@@ -244,7 +216,7 @@ export function EventOptionsPickerModal({
       const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [browsableEvents, search, filters, sortField, sortDir]);
+  }, [browsableEvents, search, filter, filterFieldMap, sortField, sortDir]);
 
   const rows = useMemo(() => computeRows(visibleEvents, groupMode), [visibleEvents, groupMode]);
 
@@ -285,17 +257,6 @@ export function EventOptionsPickerModal({
     onClose();
   }
 
-  const sections: FilterSectionConfig<PickerFilterKey>[] = [
-    {
-      key: "division",
-      title: "Division",
-      options: divisionOptions as FilterOption[],
-      control: "divisions",
-    },
-    { key: "type", title: "Type", options: TYPE_OPTIONS, control: "buttons" },
-    { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
-  ];
-
   return (
     <Modal title="Browse events" onClose={onClose} width={700}>
       <div
@@ -321,9 +282,9 @@ export function EventOptionsPickerModal({
           />
         </div>
         <FilterButton
-          active={isFilterActive(filters)}
+          count={countActiveConditions(filter)}
           onOpen={() => setShowFilterModal(true)}
-          onClear={() => setFilters(emptyFilterState(PICKER_FILTER_KEYS))}
+          onClear={() => setFilter(emptyFilter())}
         />
         <Dropdown
           value={sortField}
@@ -374,75 +335,77 @@ export function EventOptionsPickerModal({
         </p>
       )}
 
-      <div
-        style={{
-          maxHeight: "360px",
-          overflowY: "auto",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-md)",
-          marginBottom: "16px",
-        }}
-      >
-        {rows.length === 0 ? (
+      {rows.length === 0 ? (
+        <div style={{ marginBottom: "16px" }}>
           <EmptyState
+            card
+            icon={<IconEvents size={28} />}
             title="No matching events"
             description="Try adjusting your search or filters."
           />
-        ) : (
-          <>
+        </div>
+      ) : (
+        <div
+          style={{
+            maxHeight: "360px",
+            overflowY: "auto",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            marginBottom: "16px",
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              cursor: "pointer",
+              padding: "9px 12px",
+              borderBottom: "1px solid var(--color-border)",
+              background: "var(--color-surface)",
+            }}
+          >
+            <Checkbox checked={allChecked} onChange={toggleSelectAll} />
+            <span
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "11px",
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              {allChecked ? "Deselect all" : "Select all"}
+            </span>
+          </label>
+          {rows.map((row, i) => (
             <label
+              key={row.key}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "10px",
                 cursor: "pointer",
                 padding: "9px 12px",
-                borderBottom: "1px solid var(--color-border)",
-                background: "var(--color-surface)",
+                borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--color-border)",
               }}
             >
-              <Checkbox checked={allChecked} onChange={toggleSelectAll} />
+              <Checkbox checked={checked.has(row.key)} onChange={() => toggleRow(row.key)} />
               <span
                 style={{
                   fontFamily: "var(--font-sans)",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "var(--color-text-tertiary)",
+                  fontSize: "13px",
+                  lineHeight: "20px",
+                  color: "var(--color-text-primary)",
                 }}
               >
-                {allChecked ? "Deselect all" : "Select all"}
+                {row.label}
               </span>
             </label>
-            {rows.map((row, i) => (
-              <label
-                key={row.key}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  cursor: "pointer",
-                  padding: "9px 12px",
-                  borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--color-border)",
-                }}
-              >
-                <Checkbox checked={checked.has(row.key)} onChange={() => toggleRow(row.key)} />
-                <span
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "13px",
-                    lineHeight: "20px",
-                    color: "var(--color-text-primary)",
-                  }}
-                >
-                  {row.label}
-                </span>
-              </label>
-            ))}
-          </>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
         <Button type="button" variant="secondary" onClick={onClose}>
@@ -459,11 +422,11 @@ export function EventOptionsPickerModal({
       </div>
 
       {showFilterModal && (
-        <FilterModal
+        <FilterBuilderModal
           title="Filter events"
-          sections={sections}
-          filters={filters}
-          onApply={setFilters}
+          fields={filterFields}
+          filter={filter}
+          onApply={setFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}
