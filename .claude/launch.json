@@ -4,9 +4,9 @@
     {
       "name": "backend",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "uvicorn", "app.main:app", "--reload", "--port", "8001"],
+      "runtimeArgs": ["run", "uvicorn", "app.main:app", "--reload"],
       "cwd": "backend",
-      "port": 8001,
+      "port": 8000,
       "autoPort": false
     },
     {

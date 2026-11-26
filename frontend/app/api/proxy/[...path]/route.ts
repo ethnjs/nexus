@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-const API_URL = process.env.API_URL ?? "http://localhost:8001";
+const API_URL = process.env.API_URL ?? "http://localhost:8000";
 const API_KEY = process.env.API_KEY ?? "";
 
 async function proxy(

@@ -21,7 +21,7 @@ From `backend/`:
 ```bash
 uv sync
 cp .env.example .env
-uv run uvicorn app.main:app --reload --port 8001
+uv run uvicorn app.main:app --reload
 ```
 
 In development, startup runs `alembic upgrade head` and seeds these accounts:
@@ -31,7 +31,7 @@ In development, startup runs `alembic upgrade head` and seeds these accounts:
 
 Signing in also asks for a 6-digit code emailed to the account. Outside production, email to `@nexus.dev` is never sent: the full email, code included, is logged instead, in the backend console in development and in the preview logs.
 
-API docs are at [localhost:8001/docs](http://localhost:8001/docs) (Swagger) and [localhost:8001/reference](http://localhost:8001/reference) (Scalar). Both are served only when `APP_ENV` is `development` or `preview`. Production serves only the spec at `/openapi.json`, which the docs site renders.
+API docs are at [localhost:8000/docs](http://localhost:8000/docs) (Swagger) and [localhost:8000/reference](http://localhost:8000/reference) (Scalar). Both are served only when `APP_ENV` is `development` or `preview`. Production serves only the spec at `/openapi.json`, which the docs site renders.
 
 Email (sign-in and sign-up codes, password reset, invites) is sent through Resend and needs `RESEND_API_KEY`. Without it, development logs each email, including its links and codes, instead of sending it. The seeded accounts don't need it.
 
@@ -46,7 +46,7 @@ pnpm install
 pnpm dev
 ```
 
-No `.env.local` is needed. The browser talks to the Next.js route `/api/proxy`, which forwards to `API_URL` (default `http://localhost:8001`) and attaches `API_KEY` as the `X-API-Key` header. Both are server-only variables. Set `API_URL` in `frontend/.env.local` only if the backend runs on another port. Leave `API_KEY` unset in both apps locally: the backend skips the check in development when its own `API_KEY` is empty.
+No `.env.local` is needed. The browser talks to the Next.js route `/api/proxy`, which forwards to the backend and attaches `API_KEY` as the `X-API-Key` header. Set `API_URL` in `frontend/.env.local` to target a backend on another port or URL. Both are server-only variables. Leave `API_KEY` unset in both apps locally: the backend skips the check in development when its own `API_KEY` is empty.
 
 ### 4. Git hooks
 
@@ -66,10 +66,10 @@ From `backend/`:
 
 ```bash
 uv run pytest tests/api/test_forms.py   # one file
-uv run pytest                           # everything (about 15 minutes)
+uv run pytest                           # everything (about 2 minutes)
 ```
 
-Tests run against `nexus_test`. Each test rolls back its own transaction, and Google APIs and email are mocked. CI runs Ruff, ty and the full suite on every PR that touches `backend/`.
+Tests run against `nexus_test`, which one run uses at a time; a second run exits right away. Each test rolls back its own transaction, and Google APIs and email are mocked. CI runs Ruff, ty and the full suite on every PR that touches `backend/`.
 
 The frontend has no test suite. Check UI changes by clicking through them in a browser, and run `pnpm check`, `pnpm lint:react` and `pnpm typecheck` from `frontend/` (`pnpm fix` applies Biome's safe fixes). In VS Code, the recommended Biome and ESLint extensions work with the repo root open; `.vscode/settings.json` points Biome at `frontend/node_modules`, so run `pnpm install` in `frontend/` first. CI runs the same checks on every PR that touches `frontend/`.
 

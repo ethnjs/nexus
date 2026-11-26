@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { safeRedirectPath } from "@/lib/auth";
 
-const API_URL = process.env.API_URL ?? "http://localhost:8001";
+const API_URL = process.env.API_URL ?? "http://localhost:8000";
 const API_KEY = process.env.API_KEY ?? "";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/forms"];

@@ -5,16 +5,16 @@ paths:
 
 # Backend tests
 
-How and when to run tests is under "Running tests" in root CLAUDE.md.
+When to run and write tests is under "Tests" in `backend/CLAUDE.md`.
 
-- Tests use real Postgres (`TEST_DATABASE_URL`, default `nexus_test`). The schema comes from `Base.metadata.create_all`, not migrations.
+- Tests use real Postgres (`TEST_DATABASE_URL`, default `nexus_test`). The schema is built once per run from `Base.metadata.create_all`, not migrations.
 - Each test runs inside a transaction that's rolled back at teardown (the `db` fixture), so no cleanup is needed.
 - The layout mirrors `app/`: `tests/api/` follows `app/api/routes/`, `tests/core/` follows `app/core/`, and `tests/services/` follows `app/services/`. Put a new test next to its siblings.
 - Fixtures in `tests/conftest.py`:
   - `admin_user` is a site admin, so it bypasses permission checks.
   - `td_user` + `td_tournament`: a tournament owned by `td_user`, with `DEFAULT_ROLES` applied and the Tournament Director role held tournament-wide.
   - `other_user` + `other_tournament` are for cross-tenant isolation tests.
-  - `client` and `login(client, email, password)`.
+  - `client` and `login(client, email, password)`. `client` expires the session after every request, as production starts each request with a fresh one, so flush or commit setup before making a request.
   - `event_factory`, `event_category_factory`.
 - Helpers in `tests/conftest.py`:
   - `grant_role(db, tournament, user, "Role Label", track_id=None)` creates a `TournamentTrackAssignment`, tournament-wide unless `track_id` is given.

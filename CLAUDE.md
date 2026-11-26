@@ -2,7 +2,7 @@
 
 NEXUS replaces the Google Forms → Sheets workflow that Science Olympiad tournament directors (TDs) and alumni chapters use to run volunteers. It covers volunteer profiles, tournaments with tracks, events and shifts, roles and permissions, a form builder whose answers feed structured tables, and an assignments board.
 
-- `backend/`: FastAPI, SQLAlchemy 2, Alembic, Postgres 16, Python 3.13 managed with uv. Deployed on Railway. See `backend/CLAUDE.md`.
+- `backend/`: FastAPI, SQLAlchemy 2, Alembic, Postgres 16, Python 3.13 managed with uv. Deployed on Railway. See `backend/CLAUDE.md`, which also covers running and writing tests.
 - `frontend/`: Next.js 16 App Router, React 19, TypeScript, Tailwind v4, pnpm. Deployed on Vercel. See `frontend/CLAUDE.md`.
 - `docs/`: public user docs and release notes, synced to the docs site. Not developer docs.
 - `backend/docs/`: developer design notes for the subsystems that are hard to infer from code. Path-scoped rules in `.claude/rules/` say when to read them.
@@ -11,20 +11,9 @@ Setup, the release process and PR conventions for humans are in `CONTRIBUTING.md
 
 ## Running things
 
-- Backend dev server, from `backend/`: `uv run uvicorn app.main:app --reload --port 8001`. Dev startup migrates and seeds `admin@nexus.dev` / `admin1234` and `user1@nexus.dev`..`user15@nexus.dev` / `user1234`. The frontend proxy expects port 8001.
+- Backend dev server, from `backend/`: `uv run uvicorn app.main:app --reload`. Dev startup migrates and seeds `admin@nexus.dev` / `admin1234` and `user1@nexus.dev`..`user15@nexus.dev` / `user1234`.
 - Frontend, from `frontend/`: `pnpm dev`.
 - Postgres runs in Docker (`docker-compose up -d` in `backend/`). Each git worktree gets its own database through the post-checkout hook (`scripts/setup-worktree-db.sh`).
-
-## Running tests
-
-Backend tests are slow: one API test file takes about 100 seconds, and the full suite about 15 minutes. A whole directory like `tests/api/tournament/` takes nearly as long as the full suite. CI runs Ruff, ty and the full suite on every backend PR.
-
-- **Scope:** run the test files your change touches. In a multi-step task, write tests as you go and run them once the steps are done, not after each step.
-- **Leave the full suite to CI.** Once the PR is essentially complete, push and let CI run the full suite instead of running it locally. Run the full suite, a whole directory, or `tests/test_migrations.py` (which builds a scratch database from every migration) locally only while the PR isn't done and the next step depends on the result.
-- **Run in the background** (`run_in_background: true` on the Bash/PowerShell call) for anything longer than re-running a single test while debugging, and keep working meanwhile.
-- **Exact command:** `cd backend && uv run python -u -m pytest <paths> -q`. A background shell starts at the repo root, so the `cd` is required. `-u` keeps output unbuffered. Never pipe through `tail` or `head`: the pipe holds all output until pytest exits, so a live run looks identical to a dead one.
-- **One pytest run at a time.** Concurrent runs share the test database and stall each other. Before starting one, check that no other pytest process is running.
-- **Wait for the completion notification** instead of polling the output. Check progress once if the user asks. Never report tests as passing before the results arrive.
 
 ## Workflow
 

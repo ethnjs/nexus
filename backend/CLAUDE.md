@@ -3,8 +3,8 @@
 Run everything from `backend/` through uv (`uv run ...`); bare `python` may not be the project venv.
 
 ```bash
-uv run uvicorn app.main:app --reload --port 8001
-uv run python -u -m pytest tests/api/test_forms.py -q   # see "Running tests" in root CLAUDE.md
+uv run uvicorn app.main:app --reload
+uv run python -u -m pytest tests/api/test_forms.py -q   # see "Tests" below
 uv run ruff check --fix && uv run ruff format          # the pre-commit hook and CI run the same
 uv run ty check                                        # likewise
 uv run alembic revision --autogenerate -m "description"
@@ -66,3 +66,24 @@ Ruff is the linter and formatter (config in `pyproject.toml`; line length 100), 
 
 - Read settings with `get_settings()`, which is cached; never instantiate `Settings()`. `app_env` is `development`, `preview`, `production` or `test`.
 - Startup (skipped under pytest) always seeds canonical events, categories and universities. In `development` and `preview` it also runs `alembic upgrade head` and seeds the dev accounts. It schedules `archive_ended_tournaments` daily at 00:05 UTC. Production migrates in the `Procfile` before starting.
+
+## Tests
+
+Conventions, fixtures and helpers are in `.claude/rules/backend-tests.md`, which loads when you open a test file.
+
+### Running
+
+- Command: `cd backend && uv run python -u -m pytest <paths> -q`. Background shells start at the repo root, hence the `cd`. Never pipe through `tail` or `head`: the pipe holds output until pytest exits, so a live run looks dead.
+- While iterating, run the files your change touches, once the change is done rather than after each step. Run the full suite once before you push. Most files take seconds (`test_forms.py`, the largest, about 20); the full suite takes about 2 minutes. CI runs it again with Ruff and ty on every backend PR.
+- Run anything longer than a single test in the background and wait for the completion notification instead of polling. Never report tests as passing before the results arrive.
+- Only one run at a time can use the `nexus_test` database; a second run exits immediately.
+
+### Writing
+
+- A test has to be able to catch a plausible bug. Before writing one, name the mistake it would catch; if there isn't one, don't write it.
+- A bug fix comes with a test that fails without the fix.
+- For new or changed behavior, test what the code decides: each permission gate, isolation between tournaments, validation the route adds itself, and each branch of its logic. Skip what the framework already guarantees (Pydantic types and required fields, routing, plain persistence) and anything another test already exercises.
+- Search the test file first. Add a case to an existing test or a `parametrize` row rather than a near-copy, and assert several facts about one scenario in one test rather than repeating its setup across many.
+- Assert what callers can observe (status, response body, stored rows), not internals, so a refactor that keeps behavior doesn't break tests.
+- When behavior changes or is removed, update or delete its tests in the same change. Don't keep tests whose only job is to show a removed route, field or shape is gone.
+- In a test file you touch, delete tests that duplicate another or can't fail for any plausible bug, and list the deletions in the PR.
