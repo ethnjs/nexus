@@ -39,7 +39,7 @@ MANAGE_TOURNAMENT = "manage_tournament"  # full access — superset of all below
 MANAGE_ROLES = "manage_roles"  # role *definitions* only — create/edit/delete a role, reorder rank
 MANAGE_MEMBERS = "manage_members"  # membership data — roster + assign member roles
 MANAGE_EVENTS = "manage_events"  # read + write events page
-MANAGE_INVITES = "manage_invites"  # join codes + staff invites
+MANAGE_INVITES = "manage_invites"  # invites and invite emails
 MANAGE_FORMS = "manage_forms"  # forms creation and editing
 
 # Ordered list for documentation / UI display purposes

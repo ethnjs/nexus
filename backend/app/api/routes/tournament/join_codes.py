@@ -5,11 +5,15 @@ from datetime import UTC, datetime, timedelta
 import anyio.from_thread
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from app.core.auth import get_current_user
 from app.core.config import get_settings
-from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code
+from app.core.join_codes import (
+    apply_join_code_update,
+    deactivate_join_code,
+    get_unique_join_code,
+    is_join_code_expired,
+)
 from app.core.tournament import (
     get_scoped_or_404,
     get_tournament,
@@ -17,25 +21,32 @@ from app.core.tournament import (
     tournament_display_name,
 )
 from app.core.tournament.audit import (
+    INVITE_EMAIL_SENT,
     JOIN_CODE_CREATED,
     JOIN_CODE_DEACTIVATED,
     JOIN_CODE_UPDATED,
-    STAFF_INVITE_SENT,
     log_action,
 )
-from app.core.tournament.memberships import has_any_membership, resolve_person_refs
-from app.core.tournament.permissions import MANAGE_INVITES, require_permission
+from app.core.tournament.memberships import resolve_person_refs
+from app.core.tournament.permissions import (
+    MANAGE_INVITES,
+    MANAGE_MEMBERS,
+    has_permission,
+    require_permission,
+)
 from app.db.session import get_db
-from app.models.models import JoinCode, User
+from app.models.models import AuditLogEntry, JoinCode, TournamentRole, User
 from app.schemas.join_code import (
+    InviteEmailCreate,
+    InviteEmailRecipient,
+    InviteEmailResponse,
     JoinCodeCreate,
     JoinCodeResponse,
+    JoinCodeRoleResponse,
     JoinCodeUpdate,
-    StaffInviteCreate,
-    StaffInviteResponse,
 )
 from app.schemas.person import PersonRefResponse
-from app.services.email_service import send_staff_invite_emails
+from app.services.email_service import send_invite_emails
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
@@ -51,7 +62,42 @@ def _to_response(
         created_at=join_code.created_at,
         use_count=join_code.use_count,
         creator=creators[join_code.created_by],
+        roles=[
+            JoinCodeRoleResponse(id=r.id, label=r.label, has_permissions=bool(r.permissions))
+            for r in join_code.roles
+        ],
     )
+
+
+def _require_manage_members(db: Session, tournament_id: int, current_user: User) -> None:
+    # Redeeming an invite grants its roles, so setting them is a role assignment.
+    if not has_permission(current_user, tournament_id, MANAGE_MEMBERS, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Changing an invite's roles needs the manage members permission",
+        )
+
+
+def _resolve_invite_roles(
+    db: Session, tournament_id: int, role_ids: list[int]
+) -> list[TournamentRole]:
+    """This tournament's roles by id, refusing any that has permissions."""
+    if not role_ids:
+        return []
+    roles = (
+        db.query(TournamentRole)
+        .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.id.in_(role_ids))
+        .order_by(TournamentRole.rank)
+        .all()
+    )
+    if len(roles) != len(set(role_ids)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    if any(r.permissions for r in roles):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only roles with no permissions can be added to an invite",
+        )
+    return roles
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +109,10 @@ def list_join_codes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
-    # Expired codes are dead — they can't be redeemed, so neither the invites
-    # page nor the staff invite picker should offer them.
+    # Expired codes can't be redeemed, so the invites page doesn't offer them.
     join_codes = (
         db.query(JoinCode)
+        .options(selectinload(JoinCode.roles))
         .filter(
             JoinCode.tournament_id == tournament_id,
             JoinCode.is_active == True,
@@ -95,6 +141,9 @@ def create_join_code(
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
+    if payload.role_ids:
+        _require_manage_members(db, tournament_id, current_user)
+    roles = _resolve_invite_roles(db, tournament_id, payload.role_ids)
 
     expires_at = None
     if payload.expires_in_hours is not None:
@@ -107,6 +156,7 @@ def create_join_code(
         label=payload.label,
         expires_at=expires_at,
         is_active=True,
+        roles=roles,
     )
     db.add(join_code)
     db.flush()  # get join_code.id before logging
@@ -123,6 +173,7 @@ def create_join_code(
             "label": join_code.label,
             "expires_in_hours": payload.expires_in_hours,
             "expires_at": expires_at.isoformat() if expires_at else None,
+            "roles": [r.label for r in roles],
         },
     )
 
@@ -134,7 +185,7 @@ def create_join_code(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
-# Label and/or extend expiry — see deactivate_join_code() for deactivation.
+# Label, roles and/or extend expiry — see deactivate_join_code() for deactivation.
 # ---------------------------------------------------------------------------
 @router.patch("/{tournament_id}/join-codes/{code_id}/", response_model=JoinCodeResponse)
 def update_join_code(
@@ -150,12 +201,22 @@ def update_join_code(
     join_code = get_scoped_or_404(db, JoinCode, code_id, tournament_id, "Join code")
     old_label = join_code.label
     old_expires_at = join_code.expires_at
+    old_roles = [r.label for r in join_code.roles]
 
     apply_join_code_update(join_code, payload.label, payload.add_hours)
+    if payload.role_ids is not None and set(payload.role_ids) != {r.id for r in join_code.roles}:
+        _require_manage_members(db, tournament_id, current_user)
+        join_code.roles = _resolve_invite_roles(db, tournament_id, payload.role_ids)
 
     extra_data = {}
+    changes = {}
     if payload.label is not None and payload.label != old_label:
-        extra_data["changes"] = {"label": {"old": old_label, "new": payload.label}}
+        changes["label"] = {"old": old_label, "new": payload.label}
+    new_roles = [r.label for r in join_code.roles]
+    if new_roles != old_roles:
+        changes["roles"] = {"old": old_roles, "new": new_roles}
+    if changes:
+        extra_data["changes"] = changes
     if payload.add_hours is not None:
         extra_data["add_hours"] = payload.add_hours
         extra_data["expires_at"] = {
@@ -212,59 +273,91 @@ def deactivate_tournament_join_code(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/staff-invites/ — owner only, with no admin
-# bypass, unlike require_permission(). Unlike other email routes, it waits for
-# its sends, because the response and the audit entry list the failed addresses.
-# The audit entry is logged even when some sends fail.
+# POST /tournaments/{tournament_id}/join-codes/{code_id}/emails/ — manage_invites
+# Unlike other email routes, it waits for its sends, because the response and
+# the audit entry say which addresses the provider refused. The audit entry is
+# logged even when some sends fail.
 # ---------------------------------------------------------------------------
 @router.post(
-    "/{tournament_id}/staff-invites/",
-    response_model=StaffInviteResponse,
+    "/{tournament_id}/join-codes/{code_id}/emails/",
+    response_model=InviteEmailResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def send_staff_invites(
+def send_invite_email(
     tournament_id: int,
-    payload: StaffInviteCreate,
+    code_id: int,
+    payload: InviteEmailCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
     tournament = get_tournament(tournament_id, db)
-
-    # 404 before 403 — don't leak tournament existence to non-members
-    if not has_any_membership(current_user, tournament_id, db):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-    if tournament.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the tournament owner can send staff invites",
-        )
-
     require_not_archived(tournament)
 
-    join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
+    join_code = get_scoped_or_404(db, JoinCode, code_id, tournament_id, "Join code")
+    if not join_code.is_active or is_join_code_expired(join_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="This invite can no longer be used"
+        )
 
+    emails = list(dict.fromkeys(e.lower() for e in payload.emails))
     join_url = f"{get_settings().frontend_url.rstrip('/')}/join?code={join_code.code}"
+    role_labels = [r.label for r in join_code.roles if not r.permissions]
     failed = anyio.from_thread.run(
-        send_staff_invite_emails, payload.emails, tournament_display_name(tournament), join_url
+        send_invite_emails, emails, tournament_display_name(tournament), join_url, role_labels
     )
-    sent = [e for e in payload.emails if e not in failed]
-
-    extra_data = {"emails": payload.emails, "join_code": join_code.code}
-    if failed:
-        extra_data["failed"] = failed
 
     log_action(
         db,
         tournament_id,
         current_user.id,
-        STAFF_INVITE_SENT,
+        INVITE_EMAIL_SENT,
         target_type="join_code",
         target_id=join_code.id,
-        extra_data=extra_data,
+        extra_data={
+            "join_code": join_code.code,
+            "label": join_code.label,
+            "recipients": [
+                {"email": e, "status": "failed" if e in failed else "sent"} for e in emails
+            ],
+        },
     )
 
     db.commit()
-    creators = resolve_person_refs(db, tournament_id, {join_code.created_by})
-    return StaffInviteResponse(
-        join_code=_to_response(join_code, creators), sent=sent, failed=failed
+    return InviteEmailResponse(sent=[e for e in emails if e not in failed], failed=failed)
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/join-codes/emails/ — manage_invites
+# One row per recipient of every invite email, newest first, read from the
+# invite_email_sent audit entries.
+# ---------------------------------------------------------------------------
+@router.get("/{tournament_id}/join-codes/emails/", response_model=list[InviteEmailRecipient])
+def list_invite_emails(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
+):
+    entries = (
+        db.query(AuditLogEntry)
+        .filter(
+            AuditLogEntry.tournament_id == tournament_id,
+            AuditLogEntry.action == INVITE_EMAIL_SENT,
+        )
+        .order_by(AuditLogEntry.created_at.desc(), AuditLogEntry.id.desc())
+        .all()
     )
+    senders = resolve_person_refs(db, tournament_id, {e.actor_id for e in entries})
+    return [
+        InviteEmailRecipient(
+            email=recipient["email"],
+            status=recipient["status"],
+            join_code_id=entry.target_id,
+            join_code=(entry.extra_data or {}).get("join_code"),
+            label=(entry.extra_data or {}).get("label"),
+            sender=senders[entry.actor_id],
+            sender_name=entry.actor_name,
+            sent_at=entry.created_at,
+        )
+        for entry in entries
+        for recipient in (entry.extra_data or {}).get("recipients", [])
+    ]

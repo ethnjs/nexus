@@ -18,7 +18,7 @@ ROLE_DELETED = "role_deleted"
 JOIN_CODE_CREATED = "join_code_created"
 JOIN_CODE_UPDATED = "join_code_updated"
 JOIN_CODE_DEACTIVATED = "join_code_deactivated"
-STAFF_INVITE_SENT = "staff_invite_sent"
+INVITE_EMAIL_SENT = "invite_email_sent"
 TOURNAMENT_VERIFIED = "tournament_verified"
 TOURNAMENT_ARCHIVED = "tournament_archived"
 TOURNAMENT_UNARCHIVED = "tournament_unarchived"
@@ -40,7 +40,7 @@ ALL_ACTIONS: list[str] = [
     JOIN_CODE_CREATED,
     JOIN_CODE_UPDATED,
     JOIN_CODE_DEACTIVATED,
-    STAFF_INVITE_SENT,
+    INVITE_EMAIL_SENT,
     TOURNAMENT_VERIFIED,
     TOURNAMENT_ARCHIVED,
     TOURNAMENT_UNARCHIVED,
