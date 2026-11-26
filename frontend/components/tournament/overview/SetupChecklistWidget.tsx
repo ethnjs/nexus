@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import styles from "@/components/tournament/overview/Overview.module.css";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
-import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
 import { type SetupChecklistResponse, setupChecklistApi } from "@/lib/api";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { ChecklistCard } from "./ChecklistCard";
@@ -20,10 +19,10 @@ const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
     buildable: true,
     onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`),
   },
-  // invite_staff opens a modal rather than navigating — handled as a special
-  // case below, not through onClick, but still marked buildable so the card
-  // isn't dimmed/"Coming soon".
-  invite_staff: { buildable: true, onClick: null },
+  invite: {
+    buildable: true,
+    onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/invites`),
+  },
   events: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/events`) },
   shifts: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/shifts`) },
   first_form: { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms`) },
@@ -37,21 +36,15 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
   const router = useRouter();
   const { membership, hasPermission } = useMyMembership();
   const [checklist, setChecklist] = useState<SetupChecklistResponse | null>(null);
-  const [showStaffInvite, setShowStaffInvite] = useState(false);
 
   const canSee = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
 
-  function refetchChecklist() {
+  useEffect(() => {
+    if (!canSee) return;
     setupChecklistApi
       .get(Number(tournamentId))
       .then(setChecklist)
       .catch(() => {});
-  }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refetchChecklist is recreated each render
-  useEffect(() => {
-    if (!canSee) return;
-    refetchChecklist();
   }, [canSee, tournamentId]);
 
   if (!canSee || !checklist) return null;
@@ -65,11 +58,9 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
           {checklist.items.map((item) => {
             const config = CHECKLIST_CONFIG[item.item_key];
             const onClick =
-              item.item_key === "invite_staff"
-                ? () => setShowStaffInvite(true)
-                : config?.buildable && config.onClick
-                  ? () => config.onClick!(router, tournamentId)
-                  : null;
+              config?.buildable && config.onClick
+                ? () => config.onClick!(router, tournamentId)
+                : null;
             return <ChecklistCard key={item.item_key} item={item} onClick={onClick} />;
           })}
         </div>
@@ -81,14 +72,6 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
           />
         </div>
       </div>
-
-      {showStaffInvite && (
-        <StaffInviteModal
-          tournamentId={Number(tournamentId)}
-          onClose={() => setShowStaffInvite(false)}
-          onSent={refetchChecklist}
-        />
-      )}
     </OverviewCard>
   );
 }

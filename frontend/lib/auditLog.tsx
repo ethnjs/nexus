@@ -13,7 +13,7 @@ export const ALL_AUDIT_ACTIONS = [
   "join_code_created",
   "join_code_updated",
   "join_code_deactivated",
-  "staff_invite_sent",
+  "invite_email_sent",
   "tournament_verified",
   "tournament_archived",
   "tournament_unarchived",
@@ -31,7 +31,7 @@ export const ACTION_LABELS: Record<string, string> = {
   join_code_created: "Invite created",
   join_code_updated: "Invite updated",
   join_code_deactivated: "Invite deactivated",
-  staff_invite_sent: "Staff invite sent",
+  invite_email_sent: "Invite email sent",
   tournament_verified: "Verification changed",
   tournament_archived: "Tournament archived",
   tournament_unarchived: "Tournament unarchived",
@@ -429,6 +429,8 @@ const DESCRIBERS: Record<
     if (e.label) details.push(`Label: ${e.label as string}`);
     const hours = e.expires_in_hours as number | null;
     details.push(hours === null ? "Never expires" : `Expires in ${fmtDuration(hours)}`);
+    const roles = (e.roles as string[] | undefined) ?? [];
+    if (roles.length > 0) details.push(`Roles: ${roles.join(", ")}`);
     return {
       summary: (
         <>
@@ -441,9 +443,18 @@ const DESCRIBERS: Record<
 
   join_code_updated: (e) => {
     const details: string[] = [];
-    const changes = e.changes as { label?: { old: string | null; new: string | null } } | undefined;
+    const changes = e.changes as
+      | {
+          label?: { old: string | null; new: string | null };
+          roles?: { old: string[]; new: string[] };
+        }
+      | undefined;
     if (changes?.label)
       details.push(`Label: ${changes.label.old ?? "—"} → ${changes.label.new ?? "—"}`);
+    if (changes?.roles)
+      details.push(
+        `Roles: ${changes.roles.old.join(", ") || "—"} → ${changes.roles.new.join(", ") || "—"}`,
+      );
     if (typeof e.add_hours === "number") details.push(`Extended by ${e.add_hours}h`);
     return { summary: "Updated an invite", details: details.length > 0 ? details : undefined };
   },
@@ -456,18 +467,18 @@ const DESCRIBERS: Record<
     ),
   }),
 
-  staff_invite_sent: (e) => {
-    const emails = (e.emails as string[]) ?? [];
-    const failed = new Set((e.failed as string[]) ?? []);
+  invite_email_sent: (e) => {
+    const recipients = (e.recipients as { email: string; status: "sent" | "failed" }[]) ?? [];
+    const failed = recipients.filter((r) => r.status === "failed").length;
     return {
       summary: (
         <>
-          Sent {emails.length} staff invite{emails.length === 1 ? "" : "s"} via{" "}
-          <CodeBadge code={e.join_code as string} />
-          {failed.size > 0 ? ` (${failed.size} failed)` : ""}
+          Emailed invite <CodeBadge code={e.join_code as string} /> to {recipients.length}{" "}
+          {recipients.length === 1 ? "person" : "people"}
+          {failed > 0 ? ` (${failed} failed)` : ""}
         </>
       ),
-      details: emails.map((email) => (failed.has(email) ? `✗ ${email} — failed` : email)),
+      details: recipients.map((r) => (r.status === "failed" ? `✗ ${r.email} — failed` : r.email)),
     };
   },
 
