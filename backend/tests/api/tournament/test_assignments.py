@@ -1433,7 +1433,7 @@ class TestMembershipReads:
         self._assign_other_user(client, db, td_tournament, other_user)
         track_id = self._staffed_track_id(db)
 
-        assigned = {"field": "assigned", "group": str(track_id), "values": ["assigned"]}
+        assigned = self._assigned(track_id, "not_empty")
         rows = client.get(
             f"/tournaments/{td_tournament.id}/members/",
             params={"fields": "assignments", "filter": json.dumps({"conditions": [assigned]})},
