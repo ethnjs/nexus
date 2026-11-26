@@ -205,6 +205,7 @@ def list_memberships(
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
     )
+    paths = None
     if filter_json is not None:
         try:
             member_filter = FilterGroup.model_validate_json(filter_json)
@@ -212,7 +213,7 @@ def list_memberships(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Malformed filter"
             ) from exc
-        query = apply_member_filter(query, tournament, member_filter)
+        query, paths = apply_member_filter(query, tournament, member_filter)
     query = apply_member_search(
         query,
         db,
@@ -226,7 +227,7 @@ def list_memberships(
     responses = [validate_requested(MembershipFullResponse, m, exclude) for m in memberships]
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, memberships, responses)
-    enrich_built_groups(db, tournament, requested, memberships, responses)
+    enrich_built_groups(db, tournament, requested, memberships, responses, onboarding_paths=paths)
     # gate_age_flags per row, exactly as the detail route does: asking for the
     # age group must never override a member's withheld consent.
     data = [

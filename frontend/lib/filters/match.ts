@@ -56,11 +56,12 @@ function groupMatches<Row>(
   filter: FilterGroup,
   fields: Map<string, FilterField<Row>>,
   today: Date,
-): boolean {
+): boolean | null {
   const results: boolean[] = [];
   for (const item of filter.conditions) {
     if (isGroup(item)) {
-      if (item.conditions.length > 0) results.push(groupMatches(row, item, fields, today));
+      const result = groupMatches(row, item, fields, today);
+      if (result !== null) results.push(result);
       continue;
     }
     const field = fields.get(item.field);
@@ -68,7 +69,8 @@ function groupMatches<Row>(
     if (!field?.rowValues || !isConditionComplete(item, field as FilterField<never>)) continue;
     results.push(conditionMatches(row, item, field, today));
   }
-  if (results.length === 0) return true;
+  // A group with nothing to apply narrows nothing, even inside an "or".
+  if (results.length === 0) return null;
   return filter.op === "or" ? results.some(Boolean) : results.every(Boolean);
 }
 
@@ -79,5 +81,5 @@ export function matchesFilter<Row>(
   fields: Map<string, FilterField<Row>>,
   today: Date = new Date(),
 ): boolean {
-  return !filter || groupMatches(row, filter, fields, today);
+  return !filter || groupMatches(row, filter, fields, today) !== false;
 }

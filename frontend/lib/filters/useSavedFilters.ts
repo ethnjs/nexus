@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { type FilterGroup, type SavedFilter, savedFiltersApi, usersApi } from "@/lib/api";
+import { useMyMembershipIfAny } from "@/lib/useMyMembership";
 
 export interface SavedFilters {
   items: SavedFilter[];
@@ -15,11 +16,19 @@ function byName(list: SavedFilter[]): SavedFilter[] {
 }
 
 /** The viewer's named filters on one table: a tournament's when
- *  `tournamentId` is given, else their own (the admin users table). */
-export function useSavedFilters(surface: string, tournamentId?: number | null): SavedFilters {
+ *  `tournamentId` is given, else their own (the admin users table).
+ *  Undefined for a tournament the viewer isn't a member of, such as an
+ *  owner or site admin who never joined: the backend won't save theirs. */
+export function useSavedFilters(
+  surface: string,
+  tournamentId?: number | null,
+): SavedFilters | undefined {
   const [items, setItems] = useState<SavedFilter[]>([]);
+  const myMembership = useMyMembershipIfAny();
+  const available = tournamentId == null || !!myMembership?.membership;
 
   useEffect(() => {
+    if (!available) return;
     let cancelled = false;
     const request =
       tournamentId == null
@@ -29,7 +38,7 @@ export function useSavedFilters(surface: string, tournamentId?: number | null): 
     return () => {
       cancelled = true;
     };
-  }, [surface, tournamentId]);
+  }, [surface, tournamentId, available]);
 
   const create = useCallback(
     async (name: string, filter: FilterGroup) => {
@@ -65,5 +74,5 @@ export function useSavedFilters(surface: string, tournamentId?: number | null): 
     [tournamentId],
   );
 
-  return { items, create, update, remove };
+  return available ? { items, create, update, remove } : undefined;
 }

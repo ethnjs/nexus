@@ -32,14 +32,13 @@ class DisplayConfigSort(BaseModel):
 
 
 class FilterCondition(BaseModel):
-    """One filter row: a field, an operator and its values, in the vocabulary
-    the legacy `filters` dict used per key. `op` is a plain string so a stored
-    operator later retired still reads back; writes check it against
-    FILTER_OPS."""
+    """One filter row: a field, an operator and its values. `op` is a plain
+    string so a stored operator later retired still reads back; writes check
+    it against FILTER_OPS."""
 
     field: str
-    # Paired roster fields only: the track or lunch category the row is about,
-    # the left half of their legacy "left:right" values.
+    # Paired fields only: the track, lunch category or staffing need the row
+    # is about.
     group: str | None = None
     op: str = "any_of"
     values: list[str] = []

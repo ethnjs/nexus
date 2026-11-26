@@ -41,14 +41,12 @@ from app.schemas.tournament.display_config import FilterCondition, FilterGroup
 # a coordinator most often wants to find.
 NO_ROLES = "none"
 
-# Right-hand sentinel on every paired filter: the member answered *something*
-# for this track/day/category/question. The modal adds a chip for the left
-# half first (a track, a day, a lunch category) and only then narrows it, so
-# a chip has to mean something before its pill is touched.
+# A paired value meaning "anything in this group": any status on the track,
+# any shift on it, any lunch answer.
 ANY = "__any__"
 
-# An event-preference chip's rank condition, carried as one more value under
-# its track: "trackId:rank:{op}:{n}" — e.g. "3:rank:le:3", top three on track 3.
+# An event-preference rank condition, carried as one more value beside the
+# events: "rank:{op}:{n}", e.g. "rank:le:3" for the top three.
 RANK_PREFIX = "rank:"
 RANK_OPS = {
     "lt": operator.lt,
@@ -107,11 +105,7 @@ def _lunch_clause(category: str, value: str):
 
 
 def _shift_ids_on_tracks(db, tournament, track_ids: set[int]) -> set[int]:
-    """Every shift of `tournament` belonging to one of the given tracks.
-
-    Was day-scoped, which needed a timezone conversion per shift; a shift now
-    carries its track outright. Track is also the better unit: two sites
-    running the same Saturday are separate questions."""
+    """Every shift of `tournament` belonging to one of the given tracks."""
     from app.models.models import TournamentShift
 
     return {
@@ -151,7 +145,7 @@ def _roles_clause(values: list[str]):
             )
         )
     for role_id, track_ids in by_role.items():
-        # An unnarrowed chip for the same role already covers every track.
+        # An unnarrowed value for the same role already covers every track.
         if role_id in any_scope:
             continue
         clauses.append(
@@ -328,8 +322,7 @@ def _year_levels_clause(values: list[str]):
 # Filter conditions
 #
 # The roster's filter is a FilterGroup (see filter_conditions.py). Paired
-# fields put the left half of today's "left:right" values in `group`, one row
-# per track or lunch category; the rest take no group.
+# fields name their track or lunch category in `group`; the rest take none.
 # ---------------------------------------------------------------------------
 PAIRED_FIELDS = frozenset({"track", "assigned", "lunch", "event_pref", "shift"})
 _ANY_NONE = frozenset({"any_of", "none_of"})
@@ -373,7 +366,7 @@ class _Context:
         self.session = session
         self.tournament = tournament
         self._members: list[TournamentMembership] | None = None
-        self._paths: dict | None = None
+        self.paths: dict | None = None
 
     def _all_members(self) -> list[TournamentMembership]:
         if self._members is None:
@@ -391,11 +384,11 @@ class _Context:
         members = self._all_members()
         if field == "age":
             return {m.id for m in filter_age_flags(members, values)}
-        if self._paths is None:
-            self._paths = onboarding_paths(
+        if self.paths is None:
+            self.paths = onboarding_paths(
                 self.session, self.tournament.id, [m.user_id for m in members]
             )
-        return {m.id for m in filter_onboarding(members, values, self._paths)}
+        return {m.id for m in filter_onboarding(members, values, self.paths)}
 
 
 def _present_clause(ctx: _Context, field: str, group: str | None):
@@ -503,14 +496,17 @@ def _group_clause(ctx: _Context, group: FilterGroup, *, nested: bool = False):
     return or_(*clauses) if group.op == "or" else and_(*clauses)
 
 
-def apply_member_filter(query: Query, tournament, group: FilterGroup) -> Query:
-    """Narrows a TournamentMembership query by a roster filter.
+def apply_member_filter(query: Query, tournament, group: FilterGroup) -> tuple[Query, dict | None]:
+    """Narrows a TournamentMembership query by a roster filter. Also returns
+    every member's onboarding_paths when an onboarding condition computed
+    them, else None.
 
     Lenient, like the paired values: a condition the roster can't apply (a
     field or operator a later release dropped) is skipped rather than failing
     the load, and a group left with nothing to apply narrows nothing."""
-    clause = _group_clause(_Context(query.session, tournament), group)
-    return query if clause is None else query.filter(clause)
+    ctx = _Context(query.session, tournament)
+    clause = _group_clause(ctx, group)
+    return (query if clause is None else query.filter(clause)), ctx.paths
 
 
 def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
@@ -580,10 +576,8 @@ def build_filter_options(db, tournament) -> dict:
     """Everything the roster's filter modal offers, derived from what this
     tournament actually holds.
 
-    Every paired filter comes back as a group (the left half) carrying its
-    own options (the right half), because that's how the modal builds them:
-    add a track / a day / a lunch category / an event-preference question as
-    a chip, then narrow it with that chip's pill.
+    Every paired filter comes back as groups (a track or lunch category),
+    each carrying its own options, since a condition picks its group first.
 
     Sources are the catalogs wherever one exists — tracks, shifts and events
     are authoritative even when nobody has answered about them yet (a track
@@ -635,11 +629,8 @@ def build_filter_options(db, tournament) -> dict:
         .order_by(TournamentTrack.name)
     ]
 
-    # Grouped by track: a track is the unit a TD thinks in ("who's around for
-    # Day 1?"), and shift names repeat across tracks ("Impound" on both days),
-    # so a flat list offers the same label twice with nothing to tell them
-    # apart. Was grouped by day, which couldn't separate two sites running the
-    # same Saturday.
+    # Grouped by track: shift names repeat across tracks ("Impound" on both
+    # days), and two sites can run the same Saturday.
     track_names = {t["value"]: t["label"] for t in tracks}
     shift_days: dict[str, dict] = {}
     for shift in (
@@ -880,9 +871,7 @@ def _lunch_groups(db, fields, scoped, unslug, lunch_pattern, free_text_types) ->
             add_option(group, value, value)
 
     for category, group in groups.items():
-        # ANY and LUNCH_UNANSWERED are filterable but deliberately absent
-        # here: the modal offers them as an answered/not-answered toggle
-        # above the list rather than as two more rows in it.
+        # Answered or not is the is-empty / is-not-empty operator, not an option.
         sentinels = []
         # "None" only means something where it's an answer someone can give —
         # a dietary-restrictions question, or a category already holding one.

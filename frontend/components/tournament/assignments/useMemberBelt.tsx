@@ -32,7 +32,6 @@ import {
   displayConfigApi,
   type FilterGroup,
   type FilterOptionGroup,
-  type MemberFilterOptions,
   type MembershipFull,
   membersApi,
   type Role,
@@ -43,6 +42,7 @@ import {
 import { fullName } from "@/lib/assignments/board";
 import { persistDisplayConfigSurface } from "@/lib/displayConfig";
 import { countActiveConditions, emptyFilter } from "@/lib/filters/model";
+import { useMemberFilterOptions } from "@/lib/filters/useMemberFilterOptions";
 import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { FIELD_KEY_PREFIX } from "@/lib/memberColumnKeys";
 import {
@@ -103,7 +103,11 @@ export function useMemberBelt({
 }: MemberBeltOptions) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
-  const [filterOptions, setFilterOptions] = useState<MemberFilterOptions | null>(null);
+  const {
+    options: filterOptions,
+    error: filterOptionsError,
+    load: loadFilterOptions,
+  } = useMemberFilterOptions(tournamentId);
   // Named filters are shared by every tab; the applied one is per tab.
   const savedFilters = useSavedFilters(surfaceBase, tournamentId);
   const [display, setDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY);
@@ -206,16 +210,10 @@ export function useMemberBelt({
     [persist],
   );
 
-  // The options are fetched the first time the modal opens.
   const openFilterModal = useCallback(() => {
     setShowFilterModal(true);
-    if (filterOptions === null) {
-      membersApi
-        .filterOptions(tournamentId)
-        .then(setFilterOptions)
-        .catch(() => setFilterOptions(null));
-    }
-  }, [filterOptions, tournamentId]);
+    loadFilterOptions();
+  }, [loadFilterOptions]);
   const filterFields = useMemo(
     () =>
       memberFilterFields(
@@ -446,6 +444,7 @@ export function useMemberBelt({
           title="Filter members"
           fields={filterFields}
           loading={filterOptions === null}
+          loadError={filterOptionsError}
           filter={filter}
           defaults={filterToTab ? filterDefaults : undefined}
           saved={savedFilters}

@@ -44,7 +44,6 @@ import {
   displayConfigApi,
   type FilterGroup,
   type FilterOptionGroup,
-  type MemberFilterOptions,
   type MembershipFull,
   membersApi,
   type Role,
@@ -52,6 +51,7 @@ import {
 } from "@/lib/api";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { countActiveConditions, emptyFilter } from "@/lib/filters/model";
+import { useMemberFilterOptions } from "@/lib/filters/useMemberFilterOptions";
 import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import {
   DEFAULT_MEMBER_SORT,
@@ -316,7 +316,11 @@ export default function MembersPage() {
   // Filters, sort and columns are all this viewer's own display config now,
   // so they arrive in the one GET below and are written back by persistView.
   const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
-  const [filterOptions, setFilterOptions] = useState<MemberFilterOptions | null>(null);
+  const {
+    options: filterOptions,
+    error: filterOptionsError,
+    load: loadFilterOptions,
+  } = useMemberFilterOptions(tournamentId);
   const savedFilters = useSavedFilters(MEMBERS_TABLE, tournamentId);
   // The whole config as last read, so a write can lay this surface's view
   // state over the other surfaces instead of replacing them.
@@ -496,13 +500,8 @@ export default function MembersPage() {
 
   const openFilterModal = useCallback(() => {
     setShowFilterModal(true);
-    if (filterOptions === null) {
-      membersApi
-        .filterOptions(tournamentId)
-        .then(setFilterOptions)
-        .catch(() => setFilterOptions(null));
-    }
-  }, [filterOptions, tournamentId]);
+    loadFilterOptions();
+  }, [loadFilterOptions]);
 
   // Clears the legacy `sort` as it writes the chain, so the two never disagree.
   // The roster only carries the data its saved columns and sorts need, so a
@@ -997,6 +996,7 @@ export default function MembersPage() {
           title="Filter members"
           fields={filterFields}
           loading={filterOptions === null}
+          loadError={filterOptionsError}
           filter={filter}
           saved={savedFilters}
           onApply={applyFilter}

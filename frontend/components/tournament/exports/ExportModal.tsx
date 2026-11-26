@@ -34,7 +34,6 @@ import {
   type ExportPresetInput,
   exportPresetsApi,
   type FilterGroup,
-  type MemberFilterOptions,
   type MembershipFull,
   membersApi,
   type RoleWithMemberCount,
@@ -64,6 +63,7 @@ import {
   trackNamesOf,
 } from "@/lib/exports/run";
 import { countActiveConditions, emptyFilter } from "@/lib/filters/model";
+import { useMemberFilterOptions } from "@/lib/filters/useMemberFilterOptions";
 import type { SortRule } from "@/lib/sorting";
 import { useActionToast } from "@/lib/useActionToast";
 import { useExitAnimation } from "@/lib/useExitAnimation";
@@ -172,7 +172,11 @@ export function ExportModal({
   // Every export starts from everyone: never the opening page's filters.
   const [memberFilter, setMemberFilter] = useState<FilterGroup>(emptyFilter);
   const [eventFilter, setEventFilter] = useState<FilterGroup>(emptyFilter);
-  const [memberFilterOptions, setMemberFilterOptions] = useState<MemberFilterOptions | null>(null);
+  const {
+    options: memberFilterOptions,
+    error: memberFilterOptionsError,
+    load: loadMemberFilterOptions,
+  } = useMemberFilterOptions(tournamentId);
   const [trackId, setTrackId] = useState<number | null>(initialTrackId);
   const [torusRole, setTorusRole] = useState<TorusRole>("writer");
   const [duosmiumRoles, setDuosmiumRoles] = useState<DuosmiumRole[]>(ALL_DUOSMIUM_ROLES);
@@ -363,13 +367,8 @@ export function ExportModal({
   // ---- The filter modals -------------------------------------------------
   const openMemberFilters = useCallback(() => {
     setShowMemberFilters(true);
-    if (memberFilterOptions === null) {
-      membersApi
-        .filterOptions(tournamentId)
-        .then(setMemberFilterOptions)
-        .catch(() => setMemberFilterOptions(null));
-    }
-  }, [memberFilterOptions, tournamentId]);
+    loadMemberFilterOptions();
+  }, [loadMemberFilterOptions]);
   const memberFields = useMemo(
     () =>
       memberFilterFields(
@@ -937,6 +936,7 @@ export function ExportModal({
             title="Filter members"
             fields={memberFields}
             loading={memberFilterOptions === null}
+            loadError={memberFilterOptionsError}
             filter={memberFilter}
             onApply={setMemberFilter}
             onClose={() => setShowMemberFilters(false)}

@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
 import { MenuHeading, MenuItem, MenuNote } from "@/components/ui/DrillMenu";
@@ -578,6 +579,8 @@ interface FilterBuilderModalProps<Row> {
   onClose: () => void;
   /** Options still loading: a spinner in place of the rows. */
   loading?: boolean;
+  /** Options failed to load: shown in place of the rows, over `loading`. */
+  loadError?: string | null;
   saved?: SavedFilters;
 }
 
@@ -597,6 +600,7 @@ export function FilterBuilderModal<Row>({
   onApply,
   onClose,
   loading = false,
+  loadError = null,
   saved,
 }: FilterBuilderModalProps<Row>) {
   const allFields = fields as FilterField<never>[];
@@ -831,7 +835,9 @@ export function FilterBuilderModal<Row>({
         )}
 
         <AutoHeight>
-          {loading ? (
+          {loadError ? (
+            <Banner variant="error" message={loadError} />
+          ) : loading ? (
             <LoadingState context="section" />
           ) : (
             <DndContext

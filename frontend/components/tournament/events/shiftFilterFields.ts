@@ -3,6 +3,15 @@ import { eventNameWithDivision } from "@/lib/eventDisplay";
 import type { FilterField } from "@/lib/filters/model";
 import { formatDayLabel, toDateInput, toTimeInput } from "@/lib/timeFormat";
 
+/** A shift's end as "HH:mm", past "24:00" when it ends on a later day than
+ *  `start`, so it still compares as after the start. */
+function endTimeAfter(start: string, end: string): string {
+  const time = toTimeInput(end);
+  if (time >= start) return time;
+  const [hours, minutes] = time.split(":");
+  return `${Number(hours) + 24}:${minutes}`;
+}
+
 /** The shifts table's filter fields, matched in the browser. Track and Day
  *  are left out when every shift shares one. */
 export function shiftFilterFields(
@@ -47,7 +56,7 @@ export function shiftFilterFields(
       label: "Time",
       kind: "time",
       ops: ["between"],
-      rowValues: (s) => [toTimeInput(s.start), toTimeInput(s.end)],
+      rowValues: (s) => [toTimeInput(s.start), endTimeAfter(toTimeInput(s.start), s.end)],
     },
     {
       key: "events",
