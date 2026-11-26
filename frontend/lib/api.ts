@@ -1465,14 +1465,8 @@ export interface FilterOptionGroup {
 }
 
 export const membersApi = {
-  // An options object rather than positional args: the roster now takes a
-  // surface plus eight repeatable filter params, and `list(id, false, undefined,
-  // ...)` at the call site says nothing about what's being asked for.
-  //
   // `surface` filters hidden items and, when `fields` is not given, decides
-  // which field groups the rows carry (see fields_for_surface). `filters`
-  // maps a param name to the values to include — omitted or empty means that
-  // filter doesn't apply.
+  // which field groups the rows carry (see fields_for_surface).
   list: (
     tournamentId: number,
     opts: {
@@ -1481,7 +1475,6 @@ export const membersApi = {
       // identity only. `surface` fills in when this is omitted, so the members
       // table doesn't have to restate what its saved columns need.
       fields?: MembershipField[];
-      filters?: Record<string, string[]>;
       // The roster filter, already pruned of half-built rows.
       filter?: FilterGroup;
       // Identity/authority narrowing — what the role pickers ask for. A picker
@@ -1502,11 +1495,6 @@ export const membersApi = {
     if (opts.maxRank !== undefined) params.set("max_rank", String(opts.maxRank));
     if (opts.filter && opts.filter.conditions.length > 0) {
       params.set("filter", JSON.stringify(opts.filter));
-    }
-    for (const [key, values] of Object.entries(opts.filters ?? {})) {
-      // Repeated rather than comma-joined: a lunch value can legitimately
-      // contain a comma ("Rice, beans").
-      for (const value of values) params.append(key, value);
     }
     return api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?${params}`);
   },
@@ -2680,11 +2668,6 @@ export interface DisplayConfigSurface {
   // Member panel: section order and per-section visibility. null means the
   // default order with everything shown.
   sections?: DisplayConfigSection[] | null;
-  // Either table: committed filters, keyed by that table's own filter
-  // vocabulary — the roster stores query params it will send back, the
-  // events table stores the values it excludes client-side. Sets don't
-  // survive JSON, so the wire shape is arrays.
-  filters?: Record<string, string[]> | null;
   // Either table: the viewer's applied filter, in that table's fields.
   filter?: FilterGroup | null;
   // Either table: the viewer's sort. null means the page's own default.
@@ -2838,9 +2821,9 @@ export interface ExportPresetInput {
   name: string;
   row_type: ExportRowType;
   columns: ExportPresetColumn[];
-  // Who it covers: roster query-param filters, and the board's event filters.
-  member_filters: Record<string, string[]>;
-  event_filters: Record<string, string[]>;
+  // Who it covers: the roster's filter, and the event lists' filter.
+  member_filter: FilterGroup;
+  event_filter: FilterGroup;
   // Every field must be one of `columns`' keys.
   sorts: DisplayConfigSort[];
   include_header: boolean;

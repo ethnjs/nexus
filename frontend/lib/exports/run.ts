@@ -1,12 +1,4 @@
-import {
-  type EventsFilterState,
-  eventPassesFilters,
-  isEventsFilterActive,
-} from "@/components/tournament/events/EventsFilterModal";
-import {
-  type MembersFilterState,
-  membersFilterParams,
-} from "@/components/tournament/members/MembersFilterModal";
+import { eventFilterFields } from "@/components/tournament/events/eventFilterFields";
 import {
   type Assignment,
   assignmentsApi,
@@ -16,6 +8,7 @@ import {
   displayConfigApi,
   type ExportOutput,
   type ExportPresetInput,
+  type FilterGroup,
   type MembershipField,
   type MembershipFull,
   membersApi,
@@ -29,6 +22,8 @@ import { BUILTINS, buildDuosmium, buildEmailList, buildTorus } from "@/lib/expor
 import { type ExportContext, exportContext, resolveExportColumn } from "@/lib/exports/columns";
 import { EXTERNAL_SYSTEMS } from "@/lib/exports/externalSystems";
 import { exportFilename, toCsv } from "@/lib/exports/output";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, type FilterField, fieldMap } from "@/lib/filters/model";
 import { tournamentDisplayName } from "@/lib/tournamentDisplay";
 
 // One export, fully decided: which preset and every choice it needs. Both the
@@ -70,27 +65,33 @@ export function fieldsForChoice(
   return [...groups];
 }
 
-/** Events passing the event filters, or null when none apply. */
+/** The event filter's fields for an export on `trackId` (null: every track). */
+export function exportEventFields(
+  trackId: number | null,
+  events: TournamentEvent[],
+  assignments: Assignment[],
+): FilterField<TournamentEvent>[] {
+  const byEvent = new Map<number, Assignment[]>();
+  for (const a of assignments) byEvent.set(a.event.id, [...(byEvent.get(a.event.id) ?? []), a]);
+  return eventFilterFields(events, {
+    showsTrack: (id) => trackId === null || id === trackId,
+    assignmentsFor: (id) => byEvent.get(id) ?? [],
+    withTracks: trackId === null,
+  });
+}
+
+/** Events passing the event filter, or null when it doesn't apply. */
 export function eventIdsFor(
   choice: ExportChoice,
-  eventFilters: EventsFilterState,
+  eventFilter: FilterGroup,
   events: TournamentEvent[],
   assignments: Assignment[],
 ): Set<number> | null {
-  if (!usesEventFilters(choice) || !isEventsFilterActive(eventFilters)) return null;
+  if (!usesEventFilters(choice) || countActiveConditions(eventFilter) === 0) return null;
   const trackId = choice.kind === "email_list" ? null : choice.trackId;
-  const byEvent = new Map<number, Assignment[]>();
-  for (const a of assignments) byEvent.set(a.event.id, [...(byEvent.get(a.event.id) ?? []), a]);
-  const showsTrack = (id: number) => trackId === null || id === trackId;
+  const fields = fieldMap(exportEventFields(trackId, events, assignments));
   return new Set(
-    events
-      .filter((event) =>
-        eventPassesFilters(event, eventFilters, {
-          assignmentsFor: (id) => byEvent.get(id) ?? [],
-          showsTrack,
-        }),
-      )
-      .map((event) => event.id),
+    events.filter((event) => matchesFilter(event, eventFilter, fields)).map((event) => event.id),
   );
 }
 
@@ -218,12 +219,12 @@ export function trackNamesOf(tournament: Tournament): Map<number, string> {
 export async function runExport(
   tournament: Tournament,
   choice: ExportChoice,
-  memberFilters: MembersFilterState,
-  eventFilters: EventsFilterState,
+  memberFilter: FilterGroup,
+  eventFilter: FilterGroup,
 ): Promise<ExportResult> {
-  // Event filters judge events; per-event rows are built from them.
+  // The event filter judges events; per-event rows are built from them.
   const needsEvents =
-    (usesEventFilters(choice) && isEventsFilterActive(eventFilters)) ||
+    (usesEventFilters(choice) && countActiveConditions(eventFilter) > 0) ||
     (choice.kind === "custom" && choice.shape.row_type === "event");
   const [catalog, events, assignments] = await Promise.all([
     choice.kind === "custom"
@@ -235,13 +236,13 @@ export async function runExport(
   const ctx = catalog ? exportContext(catalog, tournament.timezone) : null;
   const members = await membersApi.list(tournament.id, {
     fields: fieldsForChoice(choice, ctx),
-    filters: membersFilterParams(memberFilters),
+    filter: memberFilter,
   });
   return computeExport(
     choice,
     members,
     events,
-    eventIdsFor(choice, eventFilters, events, assignments),
+    eventIdsFor(choice, eventFilter, events, assignments),
     ctx,
   );
 }
