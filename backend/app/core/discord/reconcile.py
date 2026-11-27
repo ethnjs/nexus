@@ -133,6 +133,11 @@ class _SyncPlanner:
             role = self.live.roles.get(role_id) if role_id else None
             if role is None:
                 self.tiers[spec.key] = spec.tier
+                if any(not self.live.below_bot(r.id) for r in self._unmanaged_named(spec.name)):
+                    # The build skips a role like this, as lobot can't adopt it from below; a
+                    # create would duplicate it. Once lobot is moved above it, it's adopted.
+                    self.above_bot.add(spec.name)
+                    continue
                 adoptable = self._adoptable_role(spec)
                 if adoptable is None:
                     self.roles[spec.key] = None
@@ -169,15 +174,18 @@ class _SyncPlanner:
             else:
                 self.above_bot.add(role.name)
 
+    def _unmanaged_named(self, name: str) -> list[LiveRole]:
+        managed = set(self.s.role_ids.values()) | self.claimed | {self.live.guild_id}
+        return [
+            r
+            for r in self.live.roles.values()
+            if r.name == name and r.id not in managed and not r.managed
+        ]
+
     def _adoptable_role(self, spec: RoleSpec) -> LiveRole | None:
         """The one unmanaged role named like `spec`, if it already has the permissions a create
         would give it. Adopting changes nothing, so the sync still never changes configuration."""
-        managed = set(self.s.role_ids.values()) | self.claimed | {self.live.guild_id}
-        matches = [
-            r
-            for r in self.live.roles.values()
-            if r.name == spec.name and r.id not in managed and not r.managed
-        ]
+        matches = self._unmanaged_named(spec.name)
         if len(matches) != 1:
             return None
         [role] = matches

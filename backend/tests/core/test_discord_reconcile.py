@@ -348,6 +348,40 @@ class TestNicknames:
 
 
 class TestStructure:
+    async def test_relinking_below_the_old_roles_creates_no_duplicates(
+        self, db, built, guild, scope, td_tournament, track_id, mock_discord_rest
+    ):
+        # Unlinked and added back: the new link knows none of the old roles, and lobot's new
+        # role lands below all of them.
+        db.query(DiscordGuildLink).filter_by(id=built.id).delete()
+        relinked = DiscordGuildLink(
+            tournament_id=td_tournament.id, track_id=track_id, guild_id=GUILD_ID
+        )
+        db.add(relinked)
+        db.commit()
+        for role_id, role in guild.roles.items():
+            if role_id not in (GUILD_ID, guild.bot_role):
+                role["position"] = int(role["position"]) + 1
+        guild.roles[guild.bot_role]["position"] = 1
+        mock_discord_rest.writes.clear()
+
+        assert claim_build(db, relinked.id)
+        await run_build(relinked.id, reset=False, target=None, session_scope=scope)
+        await _sync(scope)
+        assert [r["name"] for r in guild.roles.values()].count("Runner") == 1
+        assert not any(kind == "create_role" for kind, _ in mock_discord_rest.writes)
+        db.refresh(relinked)
+        assert "Runner" in (relinked.last_sync_warning or "")
+
+        # Once lobot is moved above them, the sync adopts the old roles.
+        guild.roles[guild.bot_role]["position"] = 1000
+        mark_structure(db, relinked.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(relinked)
+        assert relinked.last_sync_warning is None
+        assert [r["name"] for r in guild.roles.values()].count("Runner") == 1
+
     async def _full(self, db, link, scope):
         mark_full(db, link.id)
         db.commit()
