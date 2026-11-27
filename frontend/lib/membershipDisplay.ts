@@ -4,4 +4,5 @@ export const SOURCE_LABELS: Record<MembershipSource, string> = {
   join_code: "Invite",
   public: "Public",
   manual: "Manual",
+  import: "Import",
 };

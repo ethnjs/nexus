@@ -1,6 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -21,7 +30,7 @@ from app.core.form.permissions import (
     require_form_not_archived,
 )
 from app.core.form.validation import FormFieldValidationError, validate_field_config
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_tournament, require_not_archived, tournament_display_name
 from app.core.tournament.audit import FORM_IMPORTED, log_action
 from app.core.tournament.permissions import (
     MANAGE_FORMS,
@@ -39,6 +48,7 @@ from app.schemas.form_import import (
     ImportSettingsUpdate,
     ImportSource,
 )
+from app.services.email_service import send_import_claim_email, send_in_background
 from app.services.google_import import (
     GoogleImportClient,
     parse_form_url,
@@ -323,7 +333,9 @@ def update_import_settings(
     responses={422: {"description": "The source can't be read, or lacks an identity column"}},
 )
 def import_rows(
+    background_tasks: BackgroundTasks,
     dry_run: Annotated[bool, Form()] = True,
+    email_invited: Annotated[bool, Form()] = False,
     file: Annotated[UploadFile | None, File()] = None,
     db: Session = Depends(get_db),
     form: FormModel = Depends(require_import_form),
@@ -334,7 +346,8 @@ def import_rows(
     response from the person its email names. Existing active or invited accounts are attached,
     and an email with no account gets an invited one. Re-importing overwrites the responses of
     the people in the source and keeps everyone else's. With `dry_run` (the default) nothing is
-    saved, and the report says what the import would do."""
+    saved, and the report says what the import would do. With `email_invited`, each account
+    the import creates gets an email asking its owner to sign up and claim it."""
     require_form_not_archived(form)
     require_form_editable(form)
     assert form.import_source is not None and form.tournament is not None
@@ -377,7 +390,12 @@ def import_rows(
             "membership_ids": result.membership_ids,
             "response_ids": result.response_ids,
             "overwritten_response_ids": result.overwritten_response_ids,
+            "emailed": result.invited_emails if email_invited else [],
         },
     )
     db.commit()
+    if email_invited:
+        name = tournament_display_name(form.tournament)
+        for email in result.invited_emails:
+            send_in_background(background_tasks, send_import_claim_email, email, name)
     return report

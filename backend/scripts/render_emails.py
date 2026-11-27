@@ -40,6 +40,7 @@ async def _render_all() -> list[Sent]:
         await email_service.send_password_reset_email(TO, TOKEN)
         await email_service.send_password_changed_notice(TO)
         await email_service.send_invite_email(TO, TOURNAMENT, join_url, ["Event Supervisor"])
+        await email_service.send_import_claim_email(TO, TOURNAMENT)
     return sent
 
 

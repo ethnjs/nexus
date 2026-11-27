@@ -102,7 +102,7 @@ The number in a reserved key is a `TournamentTrack` id, not a date. A track carr
 | `availability_{track_id}` or `availability_{track_id}_{suffix}` | `single_select_radio`, `multi_select_checkbox` | `TournamentMembershipAvailability` |
 | `event_preference_{track_id}` | `ranked_choice`, `multi_select_checkbox`, `single_select_dropdown` | `TournamentMembershipEventPreference` |
 | `lunch_{track_id}_{category}` | `single_select_radio`, `multi_select_checkbox`, `short_text`, `long_text` | `TournamentMembershipLunch` |
-| `track_status_{suffix}` | `single_select_radio`, `multi_select_checkbox`; `required` must be `true` | `TournamentMembershipTrackStatus` |
+| `track_status_{suffix}` | `single_select_radio`, `multi_select_checkbox`; `required` must be `true`, except on an import form | `TournamentMembershipTrackStatus` |
 | anything else | any | nothing beyond the `FormAnswer` |
 
 A bare `availability` or `event_preference` with no track id is not reserved.
@@ -168,7 +168,7 @@ An assignment is `{"id": <TournamentTrack id>, "status": "interested" | "confirm
 
 ## Form status
 
-`Form.status` is `draft`, `published` or `archived`, set with `PATCH /forms/{id}/`.
+`Form.status` is `draft`, `published` or `archived`, set with `PATCH /forms/{id}/`. An import form (`kind="import"`) is never published; see `imports.md`.
 
 - Only a `published` form accepts responses. Submitting to any other returns 409.
 - Publishing validates the whole form (`validate_form_for_publish`): at least one live field, and every config and branching target valid together. Failures return 422.

@@ -1093,7 +1093,7 @@ export interface MembershipTrackStatus {
 // How a membership was created. "manual" covers staff-add, owner-on-create,
 // and sync import — collapsed into one value until manual add-by-staff is
 // actually removed.
-export type MembershipSource = "join_code" | "public" | "manual";
+export type MembershipSource = "join_code" | "public" | "manual" | "import";
 
 export interface AvailabilitySlot {
   date: string;

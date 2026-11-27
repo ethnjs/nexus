@@ -439,7 +439,7 @@ def get_custom_form_answers_bulk(
             FormResponse.user_id.in_(user_ids),
             Form.owner_type == "tournament",
             Form.tournament_id == tournament_id,
-            Form.status == "published",
+            Form.answers_show_on_members(),
         )
         .order_by(FormAnswer.answered_at)
         .all()

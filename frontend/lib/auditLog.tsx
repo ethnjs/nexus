@@ -19,6 +19,7 @@ export const ALL_AUDIT_ACTIONS = [
   "tournament_unarchived",
   "ownership_transferred",
   "form_response_deleted",
+  "form_imported",
   "data_exported",
 ] as const;
 
@@ -37,6 +38,7 @@ export const ACTION_LABELS: Record<string, string> = {
   tournament_unarchived: "Tournament unarchived",
   ownership_transferred: "Ownership transferred",
   form_response_deleted: "Response deleted",
+  form_imported: "Form imported",
   data_exported: "Data exported",
 };
 
@@ -506,6 +508,18 @@ const DESCRIBERS: Record<
   form_response_deleted: (e) => ({
     summary: `Deleted ${e.respondent_name as string}'s response to ${e.form_name as string}`,
   }),
+
+  form_imported: (e) => {
+    const invited = (e.invited_user_ids as number[]).length;
+    const emailed = (e.emailed as string[]).length;
+    const details = [
+      invited > 0 ? `${invited} invited` : null,
+      emailed > 0 ? `${emailed} emailed` : null,
+    ].filter(Boolean);
+    return {
+      summary: `Imported ${e.imported as number} of ${e.rows as number} rows into ${e.form_name as string}${details.length ? ` (${details.join(", ")})` : ""}`,
+    };
+  },
 
   data_exported: (e) => {
     const fields = (e.fields as MembershipField[]).map((f) => EXPORT_FIELD_LABELS[f] ?? f);

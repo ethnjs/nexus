@@ -427,6 +427,27 @@ async def send_invite_email(
     )
 
 
+async def send_import_claim_email(to: str, tournament_name: str) -> None:
+    """To someone an import added to a tournament, whose account waits for them to claim it."""
+    await _send_email(
+        to,
+        _Email(
+            subject=f"You've been added to {tournament_name}",
+            heading=f"You've been added to {tournament_name}",
+            paragraphs=[
+                f"{tournament_name} added you as a volunteer on NEXUS, where it organizes "
+                "its volunteers.",
+                f"Create your account with this email address ({to}) to see your "
+                "information and what's next.",
+            ],
+            cta_label="Create account",
+            cta_url=_cta_url("/sign-up"),
+            footnote=f"If you weren't expecting this, you can ignore this email, or email "
+            f"{_SUPPORT_EMAIL}.",
+        ),
+    )
+
+
 async def send_invite_emails(
     to_emails: list[str], tournament_name: str, join_url: str, role_labels: list[str]
 ) -> list[str]:

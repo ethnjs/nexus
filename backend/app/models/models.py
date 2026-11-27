@@ -18,8 +18,10 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     event,
     func,
+    or_,
     text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -698,7 +700,7 @@ class TournamentMembership(Base):
     tournament_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
     )
-    source: Mapped[str] = mapped_column(String(32))  # "join_code" | "public" | "manual"
+    source: Mapped[str] = mapped_column(String(32))  # "join_code" | "public" | "manual" | "import"
 
     # Join code redeemed, if source=="join_code". SET NULL on code delete so
     # history survives.
@@ -2189,6 +2191,12 @@ class Form(Base):
         """This form's step number in the onboarding sequence; None if it isn't one."""
         tf = self.tournament_form
         return tf.order if tf is not None and tf.is_onboarding else None
+
+    @classmethod
+    def answers_show_on_members(cls):
+        """A filter for forms whose answers count on members' records: published ones, and
+        import forms in use, which are never published."""
+        return or_(cls.status == "published", and_(cls.kind == "import", cls.status == "draft"))
 
 
 # ---------------------------------------------------------------------------

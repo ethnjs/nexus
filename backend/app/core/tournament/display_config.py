@@ -778,7 +778,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         .filter(
             Form.owner_type == "tournament",
             Form.tournament_id == tournament_id,
-            Form.status == "published",
+            Form.answers_show_on_members(),
             FormField.is_archived.is_(False),
             # A coarse prefilter ("_" is a wildcard); the regex below decides.
             FormField.field_key.like("lunch_%"),
@@ -823,7 +823,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         .filter(
             Form.owner_type == "tournament",
             Form.tournament_id == tournament_id,
-            Form.status == "published",
+            Form.answers_show_on_members(),
         )
         .all()
     )

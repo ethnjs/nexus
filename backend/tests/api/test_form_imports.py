@@ -397,3 +397,27 @@ def test_import_source_rejections(client, db, td_user, td_tournament):
     )
     assert no_email.status_code == 422
     assert "Email Address" in no_email.json()["detail"]
+
+
+def test_imported_answers_show_on_members_and_claim_emails(
+    client, db, td_user, td_tournament, other_user, mock_send_email
+):
+    login(client, "td@test.com", "tdpass")
+    form, (shirt, _) = _created(client, db, td_tournament)
+    rows = [",ann@example.com,Ann Lee,M,,\n", ",other@test.com,Zed Q,M,,\n"]
+    res = client.post(
+        f"/forms/{form.id}/import/",
+        data={"dry_run": "false", "email_invited": "true"},
+        files={"file": ("people.csv", (HEADER + "".join(rows)).encode(), "text/csv")},
+    )
+    assert res.status_code == 200
+    # Only the account the import created is emailed.
+    assert [call.args[0] for call in mock_send_email.call_args_list] == ["ann@example.com"]
+
+    db.expire_all()
+    ann = db.query(User).filter_by(email="ann@example.com").one()
+    membership = db.query(TournamentMembership).filter_by(user_id=ann.id).one()
+    custom = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()[
+        "custom_responses"
+    ]
+    assert [(a["field_key"], a["value"]["label"]) for a in custom] == [("shirt", "M")]

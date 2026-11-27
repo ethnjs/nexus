@@ -2,6 +2,8 @@
 paths:
   - "backend/app/core/form/**"
   - "backend/app/api/routes/forms.py"
+  - "backend/app/api/routes/form_imports.py"
+  - "backend/app/services/google_import.py"
   - "backend/app/api/routes/tournament/onboarding.py"
   - "backend/app/core/tournament/onboarding.py"
   - "backend/app/core/tournament/form_prerequisites.py"
@@ -26,6 +28,7 @@ Before changing form behavior, read the relevant design note in `backend/docs/`:
 - `form-edit-lifecycle.md`: archive vs. invalidate, response editing, write-through.
 - `track-status-rules.md`: the two track-status writers and why they differ.
 - `onboarding-and-prerequisites.md`: role prerequisites, a member's onboarding path, and why `onboarded_at` is only a snapshot.
+- `imports.md`: import forms, sources, inference, and what running an import does.
 
 Invariants that are easy to break:
 

@@ -36,14 +36,14 @@ Option = tuple[str, str, frozenset[int]]
 
 
 def _live_availability_fields(db: Session, tournament_id: int) -> list[FormField]:
-    """Live availability questions on the tournament's published forms."""
+    """Live availability questions on the tournament's published and import forms."""
     fields = (
         db.query(FormField)
         .join(Form, FormField.form_id == Form.id)
         .filter(
             Form.owner_type == "tournament",
             Form.tournament_id == tournament_id,
-            Form.status == "published",
+            Form.answers_show_on_members(),
             FormField.is_archived == False,
         )
         .order_by(FormField.form_id, FormField.order)
