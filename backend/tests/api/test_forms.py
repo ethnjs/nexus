@@ -4519,3 +4519,118 @@ class TestImportForms:
             client.put(f"/forms/{form.id}/fields/", json={"fields": [_simple_entry()]}).status_code
             == 200
         )
+
+
+# ---------------------------------------------------------------------------
+# Grid questions
+# ---------------------------------------------------------------------------
+
+
+def _grid_config(**overrides):
+    config = {
+        "required": True,
+        "column_selection": "single",
+        "rows": [
+            {"option_id": "row_sat", "value": "sat", "label": "Saturday"},
+            {"option_id": "row_sun", "value": "sun", "label": "Sunday"},
+            {"option_id": "row_old", "value": "old", "label": "Friday", "is_archived": True},
+        ],
+        "columns": [
+            {"option_id": "col_am", "value": "am", "label": "Morning"},
+            {"option_id": "col_pm", "value": "pm", "label": "Afternoon"},
+        ],
+    }
+    config.update(overrides)
+    return config
+
+
+class TestGridQuestion:
+    def _submit(self, client, db, td_user, td_tournament, value, **config):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="days", question_type="grid", config=_grid_config(**config)
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        return client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": value}]},
+        )
+
+    def test_save_assigns_ids_and_validates_shape(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        grid = _simple_entry(
+            question_type="grid",
+            config={
+                "required": False,
+                "column_selection": "single",
+                "rows": [{"value": "r", "label": "Row"}],
+                "columns": [{"value": "c", "label": "Column"}],
+            },
+        )
+
+        res = client.put(f"/forms/{form.id}/fields/", json={"fields": [grid]})
+        assert res.status_code == 200
+        config = res.json()[0]["config"]
+        assert config["rows"][0]["option_id"] and config["columns"][0]["option_id"]
+
+        multiple_ranked = {**grid["config"], "column_selection": "multiple", "one_per_column": True}
+        duplicate_rows = {**grid["config"], "rows": [{"value": "r", "label": "A"}] * 2}
+        for bad in (multiple_ranked, duplicate_rows):
+            res = client.put(
+                f"/forms/{form.id}/fields/", json={"fields": [{**grid, "config": bad}]}
+            )
+            assert res.status_code == 422
+
+    def test_single_answer_stores_column_snapshots(self, client, db, td_user, td_tournament):
+        res = self._submit(
+            client, db, td_user, td_tournament, {"row_sat": "col_am", "row_sun": "col_am"}
+        )
+        assert res.status_code == 200
+        assert res.json()["answers"][0]["value"] == {
+            "row_sat": {"option_id": "col_am", "value": "am", "label": "Morning"},
+            "row_sun": {"option_id": "col_am", "value": "am", "label": "Morning"},
+        }
+
+    def test_multiple_answer_stores_lists(self, client, db, td_user, td_tournament):
+        res = self._submit(
+            client,
+            db,
+            td_user,
+            td_tournament,
+            {"row_sat": ["col_am", "col_pm"], "row_sun": ["col_pm"]},
+            column_selection="multiple",
+        )
+        assert res.status_code == 200
+        assert [c["option_id"] for c in res.json()["answers"][0]["value"]["row_sat"]] == [
+            "col_am",
+            "col_pm",
+        ]
+
+    @pytest.mark.parametrize(
+        ("value", "config"),
+        [
+            ({"row_sat": "col_am"}, {}),
+            ({"row_sat": "col_am", "row_sun": "col_xx"}, {}),
+            ({"row_sat": "col_am", "row_sun": "col_am", "row_old": "col_pm"}, {}),
+            ({"row_sat": "col_am", "row_sun": "col_am"}, {"one_per_column": True}),
+            (
+                {"row_sat": ["col_am", "col_am"], "row_sun": ["col_pm"]},
+                {"column_selection": "multiple"},
+            ),
+            ({"row_sat": "col_am", "row_sun": "col_pm"}, {"column_selection": "multiple"}),
+        ],
+        ids=[
+            "required-row-missing",
+            "unknown-column",
+            "archived-row",
+            "column-reused",
+            "duplicate-in-row",
+            "string-on-multiple",
+        ],
+    )
+    def test_rejects_invalid_answers(self, client, db, td_user, td_tournament, value, config):
+        res = self._submit(client, db, td_user, td_tournament, value, **config)
+        assert res.status_code == 400

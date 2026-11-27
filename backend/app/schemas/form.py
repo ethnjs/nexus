@@ -198,6 +198,48 @@ class TextConfig(BaseModel):
     max_length: int = Field(gt=0)
 
 
+class GridChoice(BaseModel):
+    """A grid row or column. Shaped like an option so answers snapshot it the same way."""
+
+    model_config = ConfigDict(extra="forbid")
+    option_id: str = Field(min_length=1)
+    value: str
+    label: str = Field(min_length=1)
+    is_archived: bool = False
+
+
+def _unique_grid_choices(choices: list[GridChoice]) -> list[GridChoice]:
+    ids = [c.option_id for c in choices]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate option_id in grid rows or columns")
+    values = [c.value for c in choices]
+    if len(values) != len(set(values)):
+        raise ValueError("duplicate value in grid rows or columns")
+    return choices
+
+
+class GridConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Every live row must be answered.
+    required: bool
+    column_selection: Literal["single", "multiple"]
+    # Each column may be picked in at most one row, which is how a grid ranks.
+    one_per_column: bool = False
+    rows: list[GridChoice] = Field(min_length=1)
+    columns: list[GridChoice] = Field(min_length=1)
+
+    @field_validator("rows", "columns")
+    @classmethod
+    def _unique(cls, choices: list[GridChoice]) -> list[GridChoice]:
+        return _unique_grid_choices(choices)
+
+    @model_validator(mode="after")
+    def _one_per_column_needs_single(self):
+        if self.one_per_column and self.column_selection != "single":
+            raise ValueError("one_per_column requires column_selection 'single'")
+        return self
+
+
 QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
     "acknowledgment": AcknowledgmentConfig,
     "single_select_radio": SingleSelectRadioConfig,
@@ -206,6 +248,7 @@ QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
     "ranked_choice": RankedChoiceConfig,
     "short_text": TextConfig,
     "long_text": TextConfig,
+    "grid": GridConfig,
 }
 
 

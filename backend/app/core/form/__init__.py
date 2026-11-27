@@ -64,6 +64,8 @@ def snapshot_answer_value(field: FormField, value):
     at submission, so later edits to the option don't change how it reads.
     Returns `value` unchanged when it doesn't match the expected shape, since
     it's unvalidated input."""
+    if field.question_type == "grid":
+        return _snapshot_grid(field, value)
     if field.question_type not in OPTION_BEARING_TYPES or value is None:
         return value
 
@@ -84,6 +86,21 @@ def snapshot_answer_value(field: FormField, value):
     return _snapshot_option(options_by_id, value) if isinstance(value, (str, dict)) else value
 
 
+def _snapshot_grid(field: FormField, value):
+    """{row_id: column snapshot}, or {row_id: [column snapshots]} on a multiple-choice grid."""
+    if not isinstance(value, dict):
+        return value
+    columns_by_id = {c["option_id"]: c for c in (field.config or {}).get("columns", [])}
+    return {
+        row_id: (
+            [_snapshot_option(columns_by_id, c) for c in picked]
+            if isinstance(picked, list)
+            else _snapshot_option(columns_by_id, picked)
+        )
+        for row_id, picked in value.items()
+    }
+
+
 def selected_option_ids(field: FormField, value) -> set:
     """Inverse-ish of snapshot_answer_value: pulls the set of option_ids a
     stored (already-snapshotted) or raw answer references, regardless of
@@ -91,7 +108,10 @@ def selected_option_ids(field: FormField, value) -> set:
     to check a stored answer against a set of newly-archived option_ids."""
     if value is None:
         return set()
-    if field.question_type == "ranked_choice":
+    if field.question_type == "grid":
+        picked = value.values() if isinstance(value, dict) else []
+        items = [item for p in picked for item in (p if isinstance(p, list) else [p])]
+    elif field.question_type == "ranked_choice":
         items = value.values() if isinstance(value, dict) else []
     elif isinstance(value, list):
         items = value
@@ -108,16 +128,21 @@ def assign_option_ids(config: dict | None) -> dict | None:
     that already carries a non-empty option_id (echoing what a prior GET
     returned for an option the TD kept) keeps it; an option with none
     (freshly added in this edit) gets a fresh one assigned here. No-op for
-    configs without an `options` key."""
-    if not config or "options" not in config:
+    configs without an `options` key (or, on a grid, `rows` and `columns`)."""
+    if not config:
         return config
-    options = []
-    for option in config["options"]:
-        option = dict(option)
-        if not option.get("option_id"):
-            option["option_id"] = secrets.token_hex(5)
-        options.append(option)
-    return {**config, "options": options}
+    assigned = dict(config)
+    for key in ("options", "rows", "columns"):
+        if not isinstance(config.get(key), list):
+            continue
+        choices = []
+        for choice in config[key]:
+            choice = dict(choice)
+            if not choice.get("option_id"):
+                choice["option_id"] = secrets.token_hex(5)
+            choices.append(choice)
+        assigned[key] = choices
+    return assigned
 
 
 def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:

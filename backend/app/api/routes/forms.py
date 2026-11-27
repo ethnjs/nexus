@@ -16,6 +16,7 @@ from app.core.form import (
 )
 from app.core.form.branching import (
     duplicate_ranked_choice_field_keys,
+    invalid_grid_answer_field_keys,
     invalid_other_answer_field_keys,
     missing_required_field_keys,
 )
@@ -998,11 +999,26 @@ def _stored_answers_as_submitted(db: Session, response: FormResponse) -> dict:
         if isinstance(value, list):
             value = [_unwrap_snapshot(item) for item in value]
         elif isinstance(value, dict) and "option_id" not in value:
-            value = {rank: _unwrap_snapshot(item) for rank, item in value.items()}  # ranked_choice
+            # ranked_choice's {rank: snapshot}, or a grid's {row: snapshot | [snapshots]}
+            value = {
+                key: [_unwrap_snapshot(i) for i in item]
+                if isinstance(item, list)
+                else _unwrap_snapshot(item)
+                for key, item in value.items()
+            }
         else:
             value = _unwrap_snapshot(value)
         result[answer.field_id] = value
     return result
+
+
+def _require_valid_grid_answers(fields: list[FormField], answers: dict) -> None:
+    invalid = invalid_grid_answer_field_keys(fields, answers)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid grid answer for field(s): {sorted(invalid)}",
+        )
 
 
 def _require_valid_other_answers(fields: list[FormField], answers: dict) -> None:
@@ -1080,6 +1096,7 @@ def submit_form_response(
             detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
     _require_valid_other_answers(active_fields, answers_by_field)
+    _require_valid_grid_answers(active_fields, answers_by_field)
 
     response = FormResponse(form_id=form.id, user_id=current_user.id)
     db.add(response)
@@ -1164,6 +1181,7 @@ def patch_form_response(
             detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
     _require_valid_other_answers(list(fields_by_id.values()), answers_by_field)
+    _require_valid_grid_answers(list(fields_by_id.values()), answers_by_field)
 
     db.query(FormAnswer).filter(
         FormAnswer.response_id == response.id, FormAnswer.field_id.in_(patched_ids)

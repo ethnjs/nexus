@@ -2248,20 +2248,15 @@ class FormField(Base):
     description: Mapped[str | None] = mapped_column(Text)
 
     question_type: Mapped[str] = mapped_column(String(32))
-    # short_text | paragraph | single_select_radio | single_select_dropdown
-    # | multi_select | ranked_choice | grid | shift_select | page_break
+    # See QUESTION_TYPE_CONFIG_SCHEMAS for the types and their config.
 
     # Dashboard lookup key, slugified from the label at create time and stable
     # afterward. Unique among a form's live fields; other forms may reuse it,
     # and a member's latest answer to a key is the one shown.
     field_key: Mapped[str] = mapped_column(String(64))
 
+    # Shapes are in backend/docs/form-question-types-reference.md.
     config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    # For plain choice questions: {"options": [{"id": "opt_1", "label": "...",
-    #   "archived": false, "next_section_id": null, "allow_other": false}, ...]}
-    # For "grid": {"rows": [{"id","label"}...], "columns": [{"id","label"}...],
-    #   "column_selection": "single"|"multiple"}
-    # For "page_break": unused, null
 
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     # On an import form: which source columns fill this field and how their

@@ -63,6 +63,17 @@ def _is_blank(value: Any) -> bool:
     return False
 
 
+def _live_ids(choices: list[dict]) -> set[str]:
+    return {c["option_id"] for c in choices if not c.get("is_archived")}
+
+
+def _grid_is_incomplete(field: FormField, value: Any) -> bool:
+    """A required grid needs every live row answered."""
+    if not isinstance(value, dict):
+        return True
+    return any(_is_blank(value.get(row_id)) for row_id in _live_ids((field.config or {})["rows"]))
+
+
 def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
     """field_keys of reachable, required fields left blank in `answers`."""
     reachable = compute_reachable_field_ids(fields, answers)
@@ -71,8 +82,44 @@ def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]
         for field in fields
         if field.id in reachable
         and (field.config or {}).get("required")
-        and _is_blank(answers.get(field.id))
+        and (
+            _grid_is_incomplete(field, answers.get(field.id))
+            if field.question_type == "grid"
+            else _is_blank(answers.get(field.id))
+        )
     ]
+
+
+def invalid_grid_answer_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
+    """field_keys of grid answers that aren't {live row id: live column id} (a list of distinct
+    column ids on a multiple-choice grid), or that reuse a column under one_per_column."""
+    offenders = []
+    for field in fields:
+        if field.question_type != "grid" or field.id not in answers:
+            continue
+        config = field.config or {}
+        rows, columns = _live_ids(config["rows"]), _live_ids(config["columns"])
+        value = answers[field.id]
+        if not isinstance(value, dict) or not set(value) <= rows:
+            offenders.append(field.field_key)
+            continue
+        picked: list[Any] = []
+        valid = True
+        for selection in value.values():
+            if config["column_selection"] == "multiple":
+                valid = isinstance(selection, list) and len(selection) == len(set(selection))
+            else:
+                valid = isinstance(selection, str)
+            if not valid:
+                break
+            picked.extend(selection if isinstance(selection, list) else [selection])
+        if (
+            not valid
+            or not set(picked) <= columns
+            or (config.get("one_per_column") and len(picked) != len(set(picked)))
+        ):
+            offenders.append(field.field_key)
+    return offenders
 
 
 OTHER_TEXT_MAX_LENGTH = 500
