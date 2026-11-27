@@ -23,11 +23,6 @@ interface TournamentSidebarProps {
   tournamentId: string | number;
 }
 
-/**
- * The tournament rail's item set. Sheets is deliberately absent — the route
- * still exists but the feature is deprecated, so the nav entry went rather
- * than being left as a dead link.
- */
 export function TournamentSidebar({ onExpandedChange, tournamentId }: TournamentSidebarProps) {
   const base = `/dashboard/tournaments/${tournamentId}`;
   const settingsBase = `${base}/settings`;

@@ -135,12 +135,8 @@ function validateFields(
   return issues;
 }
 
-// Mirrors useSheetValidation's shape (frontend/lib/useSheetValidation.tsx):
-// validationErrors/hasErrors/handle422/renderErrorBanner. Diverges where the
-// two domains differ — this hook's errors come from a live client-side
-// pass over the whole field list rather than a structured 422 body, since
-// the forms PUT .../fields/ route returns a single message string rather
-// than a per-row {errors, warnings} shape.
+// Errors come from a client-side pass over the whole field list, since the
+// PUT .../fields/ route returns a single message string, not per-field errors.
 export function useFormValidation() {
   const addon = useFormBuilderAddon();
   const [validationErrors, setValidationErrors] = useState<FieldValidationIssue[]>([]);

@@ -38,13 +38,6 @@
       }
     }
   },
-  "overrides": [
-    {
-      // The Google Sheets import is deprecated and unmaintained, as on the backend.
-      "includes": ["**/sheets/**"],
-      "linter": { "enabled": false }
-    }
-  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double"

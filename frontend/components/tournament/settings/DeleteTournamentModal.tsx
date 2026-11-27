@@ -58,8 +58,8 @@ export function DeleteTournamentModal({
             color: "var(--color-text-secondary)",
           }}
         >
-          This permanently deletes <strong>{tournamentName}</strong> — every membership, role, sheet
-          config, and event tied to it. This cannot be undone.
+          This permanently deletes <strong>{tournamentName}</strong> — every membership, role, form,
+          and event tied to it. This cannot be undone.
         </p>
 
         <Input

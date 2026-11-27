@@ -21,5 +21,5 @@ When to run and write tests is under "Tests" in `backend/CLAUDE.md`.
   - `primary_track_id(db, tournament_id)` returns a track to attach events and shifts to.
   - `future_date(month, day)` / `FUTURE_YEAR`. Never hardcode dates; tournament creation rejects past dates.
   - `TOURNAMENT_REQUIRED_FIELDS` is the minimal create payload.
-- Google Sheets and Forms are mocked through `app.dependency_overrides` (`mock_sheets_service`, `mock_forms_service`). Email is stubbed by the autouse `mock_send_email`, which patches `app.services.email_service._send`. If you change how `email_service` sends, keep every sender going through the patched function; a bypassed mock doesn't fail tests, it sends real email.
+- Email is stubbed by the autouse `mock_send_email`, which patches `app.services.email_service._send`. If you change how `email_service` sends, keep every sender going through the patched function; a bypassed mock doesn't fail tests, it sends real email.
 - Test behavior through the API (`client`) where a route exists; reserve `tests/core/` for logic with no route of its own or with many edge cases.

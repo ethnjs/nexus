@@ -61,10 +61,7 @@ Keep the test backend stopped until step 6, so real emails and live sessions nev
    uv run python -m app.db.anonymize_users --keep <your-email> --dry-run
    uv run python -m app.db.anonymize_users --keep <your-email>
    ```
-6. **Turn off sheet sync, then start the backend.** `sheet_configs` still point at prod's Google Sheets.
-   ```bash
-   psql "<TEST_URL>" -c "UPDATE sheet_configs SET is_active = false;"
-   ```
+6. **Start the test backend.**
 7. **Delete `prod.dump`.** It's full prod PII. Never commit it.
 
 ## What it doesn't cover

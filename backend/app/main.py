@@ -12,7 +12,6 @@ from app.api.routes import (
     forms,
     join,
     season_event,
-    sheets,
     universities,
     user_experience,
     users,
@@ -159,7 +158,6 @@ app.include_router(tournament_display_config.router, prefix="", dependencies=[ap
 app.include_router(tournament_assignments.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_export_presets.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_saved_filters.router, prefix="", dependencies=[api_key_dependency])
-app.include_router(sheets.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(universities.router, prefix="", dependencies=[api_key_dependency])

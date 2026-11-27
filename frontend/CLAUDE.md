@@ -31,7 +31,7 @@ There's no test suite. UI changes are verified by using them in a browser agains
 
 - `app/` routes:
   - `(auth)/` holds the signed-out flows.
-  - `dashboard/tournaments/[id]/<tab>` is the staff app: `overview`, `members`, `events`, `shifts`, `forms`, `sheets`, `assignments`, and `settings/{general,roles,invites,audit-log}`.
+  - `dashboard/tournaments/[id]/<tab>` is the staff app: `overview`, `members`, `events`, `shifts`, `forms`, `assignments`, and `settings/{general,roles,invites,audit-log}`.
   - `dashboard/admin/` is the site admin area.
   - `forms/[formId]/{edit,preview,view,responses}` holds the form builder and respondent views.
   - `tournaments/[id]/onboarding`, `join`, `profile/[id]` and `settings/` are member-facing.

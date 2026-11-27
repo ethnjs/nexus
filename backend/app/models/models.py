@@ -276,7 +276,7 @@ class SeasonEvent(Base):
 # ---------------------------------------------------------------------------
 # User — core identity for volunteers, TDs, and admins.
 # role="admin" bypasses all tournament permission checks; "user" is gated by
-# TournamentMembershipRole. Sheet-synced volunteers have hashed_password=None.
+# tournament roles.
 # ---------------------------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
@@ -535,9 +535,6 @@ class Tournament(Base):
 
     owner: Mapped["User | None"] = relationship(
         "User", back_populates="tournaments", foreign_keys=[owner_id]
-    )
-    sheet_configs: Mapped[list["SheetConfig"]] = relationship(
-        "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
     )
     events: Mapped[list["TournamentEvent"]] = relationship(
         "TournamentEvent", back_populates="tournament", cascade="all, delete-orphan"
@@ -2092,34 +2089,7 @@ class TournamentChapter(Base):
 
 
 # ---------------------------------------------------------------------------
-# SheetConfig
-# ---------------------------------------------------------------------------
-class SheetConfig(Base):
-    __tablename__ = "sheet_configs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    tournament_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE")
-    )
-    label: Mapped[str] = mapped_column(String(255))
-    sheet_type: Mapped[str] = mapped_column(String(64))
-    sheet_url: Mapped[str] = mapped_column(Text)
-    spreadsheet_id: Mapped[str] = mapped_column(String(255))
-    sheet_name: Mapped[str] = mapped_column(String(255))
-    column_mappings: Mapped[Any] = mapped_column(JSON, nullable=False, default=dict)
-    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
-    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
-    )
-
-    tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="sheet_configs")
-
-
-# ---------------------------------------------------------------------------
-# Form — a first-party form (replaces the Google Forms + sheet-sync
-# pipeline). Owned by exactly one tournament OR one chapter (owner_type +
+# Form — a first-party form. Owned by exactly one tournament OR one chapter (owner_type +
 # CHECK constraint) — multi-tournament "group forms" are a later phase.
 # ---------------------------------------------------------------------------
 class Form(Base):

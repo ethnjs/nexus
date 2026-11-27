@@ -93,24 +93,6 @@ export function IconVolunteers({ size = 18, ...props }: IconProps) {
   );
 }
 
-export function IconSheets({ size = 18, ...props }: IconProps) {
-  return (
-    <svg
-      aria-hidden="true"
-      width={size}
-      height={size}
-      viewBox="0 0 20 20"
-      fill="none"
-      style={{ flexShrink: 0, ...props.style }}
-      className={props.className}
-    >
-      <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="2" y1="8" x2="18" y2="8" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="10" y1="8" x2="10" y2="17" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
 export function IconForms({ size = 18, ...props }: IconProps) {
   return (
     <svg
