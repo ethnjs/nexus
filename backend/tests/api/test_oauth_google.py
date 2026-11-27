@@ -50,7 +50,7 @@ def google_settings(monkeypatch):
     monkeypatch.setattr(settings, "google_oauth_client_id", "test-client")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "test-secret")
     monkeypatch.setattr(
-        settings, "google_oauth_redirect_uri", "http://localhost:8001/auth/oauth/google/callback/"
+        settings, "google_oauth_redirect_uri", "http://localhost:8000/auth/oauth/google/callback/"
     )
     monkeypatch.setattr(settings, "frontend_url", "http://localhost:3000/")
 
