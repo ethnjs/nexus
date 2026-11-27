@@ -20,6 +20,7 @@ from app.core.form.branching import (
     invalid_other_answer_field_keys,
     missing_required_field_keys,
 )
+from app.core.form.import_mapping import validate_import_mapping
 from app.core.form.permissions import (
     require_form_editable,
     require_form_manage_access,
@@ -716,6 +717,11 @@ def bulk_update_fields(
     require_form_editable(form)
     if form.kind == "import":
         _reject_required_and_branching(payload)
+    elif any(entry.import_mapping is not None for entry in payload.fields):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Only an import form's questions have import mappings",
+        )
     is_history_preserving = _is_history_preserving(db, form)
 
     # Archived fields are addressable here too: naming one in the payload
@@ -785,6 +791,18 @@ def bulk_update_fields(
             ) from e
         return normalized
 
+    def _checked_mapping(entry, config: dict) -> dict | None:
+        if entry.import_mapping is None:
+            return None
+        try:
+            validate_import_mapping(entry.question_type, config, entry.import_mapping)
+        except FormFieldValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"{entry.label!r}: {e}",
+            ) from e
+        return entry.import_mapping.model_dump(exclude_none=True)
+
     removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
     followers = _followers_by_anchor(
         existing_by_id.values(),
@@ -835,6 +853,7 @@ def bulk_update_fields(
             field.field_key = new_field_key
             field.config = normalized_config
             flag_modified(field, "config")
+            field.import_mapping = _checked_mapping(entry, normalized_config)
         else:
             field_key = slugify(entry.field_key or "")
             normalized_config = _validate_config(entry.question_type, entry.config, field_key)
@@ -846,6 +865,7 @@ def bulk_update_fields(
                 question_type=entry.question_type,
                 field_key=field_key,
                 config=normalized_config,
+                import_mapping=_checked_mapping(entry, normalized_config),
                 is_archived=False,
             )
             db.add(new_field)

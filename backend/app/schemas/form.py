@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.form_import import ImportMapping
 from app.schemas.person import PersonNameRef, PersonRefResponse
 
 # ---------------------------------------------------------------------------
@@ -284,6 +285,10 @@ class BulkFieldEntry(BaseModel):
     description: str | None = None
     question_type: str
     config: dict[str, Any] | None = None
+    # Import forms only. The payload is the target state, so leaving it out clears it. An
+    # option a mapping names must already have its option_id, so the client assigns ids to
+    # new options on an import form.
+    import_mapping: ImportMapping | None = None
 
 
 class BulkFieldsUpdate(BaseModel):

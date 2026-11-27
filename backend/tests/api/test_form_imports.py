@@ -150,3 +150,91 @@ def test_tabs(client, td_user, td_tournament, google):
         url, files={"file": ("people.xlsx", buffer.getvalue(), "application/octet-stream")}
     )
     assert xlsx.json() == {"tabs": ["Responses", "Other"], "selected": "Responses"}
+
+
+def _created(client, db, tournament):
+    form = db.get(Form, _create(client, tournament).json()["id"])
+    fields = db.query(FormField).filter_by(form_id=form.id).order_by(FormField.order).all()
+    return form, fields
+
+
+def _entry(field, **overrides):
+    entry = {
+        "id": field.id,
+        "label": field.label,
+        "question_type": field.question_type,
+        "config": field.config,
+        "import_mapping": field.import_mapping,
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_import_settings_read_and_update(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    form, fields = _created(client, db, td_tournament)
+
+    settings = client.get(f"/forms/{form.id}/import/").json()
+    assert settings["source"]["identity"]["email"] == "Email Address"
+    shirt_mapping = settings["mappings"][fields[0].id]
+    assert (shirt_mapping["shape"], shirt_mapping["columns"][0]["header"]) == ("column", "Shirt")
+
+    identity = {"email": "Email Address", "first_name": "Name"}
+    res = client.patch(f"/forms/{form.id}/import/", json={"identity": identity})
+    saved = res.json()["source"]["identity"]
+    assert {k: v for k, v in saved.items() if v} == identity
+    assert client.patch(f"/forms/{form.id}/import/", json={"sheet_tab": "x"}).status_code == 422
+
+    standard = Form(
+        owner_type="tournament", tournament_id=td_tournament.id, name="Plain", created_by=td_user.id
+    )
+    db.add(standard)
+    db.commit()
+    assert client.get(f"/forms/{standard.id}/import/").status_code == 404
+
+
+def test_saving_fields_checks_and_keeps_mappings(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    form, (shirt, grid) = _created(client, db, td_tournament)
+    url = f"/forms/{form.id}/fields/"
+
+    assert client.put(url, json={"fields": [_entry(shirt), _entry(grid)]}).status_code == 200
+    db.expire_all()
+    assert db.get(FormField, grid.id).import_mapping["shape"] == "grid"
+
+    unknown_row = {
+        **grid.import_mapping,
+        "columns": [{"header": "Avail [Sat]", "option_id": "nope"}],
+    }
+    text_with_grid_mapping = _entry(
+        shirt,
+        question_type="short_text",
+        config={"required": False, "max_length": 50},
+        import_mapping=grid.import_mapping,
+    )
+    for bad in (
+        [_entry(shirt), _entry(grid, import_mapping=unknown_row)],
+        [text_with_grid_mapping, _entry(grid)],
+    ):
+        assert client.put(url, json={"fields": bad}).status_code == 422
+
+    # The payload is the target state: a question sent without a mapping loses it.
+    client.put(url, json={"fields": [_entry(shirt, import_mapping=None), _entry(grid)]})
+    db.expire_all()
+    assert db.get(FormField, shirt.id).import_mapping is None
+
+
+def test_standard_forms_take_no_mapping(client, db, td_user, td_tournament):
+    form = Form(
+        owner_type="tournament", tournament_id=td_tournament.id, name="Plain", created_by=td_user.id
+    )
+    db.add(form)
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    entry = {
+        "label": "Shirt",
+        "question_type": "short_text",
+        "config": {"required": False, "max_length": 50},
+        "import_mapping": {"shape": "column", "columns": [{"header": "Shirt"}]},
+    }
+    assert client.put(f"/forms/{form.id}/fields/", json={"fields": [entry]}).status_code == 422

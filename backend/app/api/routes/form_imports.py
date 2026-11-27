@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.form import slugify
 from app.core.form.import_inference import field_keys, infer_fields
 from app.core.form.import_sources import (
@@ -13,18 +14,28 @@ from app.core.form.import_sources import (
     read_upload,
     xlsx_sheet_names,
 )
+from app.core.form.permissions import (
+    require_form_editable,
+    require_form_manage_access,
+    require_form_not_archived,
+)
 from app.core.form.validation import FormFieldValidationError, validate_field_config
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import (
     MANAGE_FORMS,
     MANAGE_MEMBERS,
+    has_permission,
     require_all_permissions,
 )
 from app.db.session import get_db
 from app.models.models import Form as FormModel
 from app.models.models import FormField, TournamentForm, User
 from app.schemas.form import FormRead
-from app.schemas.form_import import ImportSource
+from app.schemas.form_import import (
+    ImportSettingsRead,
+    ImportSettingsUpdate,
+    ImportSource,
+)
 from app.services.google_import import (
     GoogleImportClient,
     parse_form_url,
@@ -233,3 +244,66 @@ def create_import_form(
     db.commit()
     db.refresh(form)
     return form
+
+
+# ---------------------------------------------------------------------------
+# GET / PATCH /forms/{form_id}/import/
+# ---------------------------------------------------------------------------
+
+
+def require_import_form(
+    form: FormModel = Depends(require_form_manage_access),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FormModel:
+    """An import form, for someone who may also manage members."""
+    if form.kind != "import":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import form not found")
+    assert form.tournament_id is not None
+    if not has_permission(current_user, form.tournament_id, MANAGE_MEMBERS, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+        )
+    return form
+
+
+def _settings(db: Session, form: FormModel) -> ImportSettingsRead:
+    fields = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)  # noqa: E712
+        .all()
+    )
+    return ImportSettingsRead.model_validate(
+        {
+            "source": form.import_source,
+            "mappings": {f.id: f.import_mapping for f in fields if f.import_mapping},
+        }
+    )
+
+
+@router.get("/forms/{form_id}/import/", response_model=ImportSettingsRead)
+def get_import_settings(
+    db: Session = Depends(get_db), form: FormModel = Depends(require_import_form)
+):
+    return _settings(db, form)
+
+
+@router.patch("/forms/{form_id}/import/", response_model=ImportSettingsRead)
+def update_import_settings(
+    payload: ImportSettingsUpdate,
+    db: Session = Depends(get_db),
+    form: FormModel = Depends(require_import_form),
+):
+    """Changes which columns identify each person, or which tab or sheet is read. Columns are
+    checked against the source when the import runs, since rows aren't stored."""
+    require_form_not_archived(form)
+    require_form_editable(form)
+    assert form.import_source is not None
+    if payload.sheet_tab is not None and form.import_source.get("file_type") == "csv":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="A CSV has no sheets"
+        )
+    merged = {**form.import_source, **payload.model_dump(exclude_unset=True, exclude_none=True)}
+    form.import_source = ImportSource.model_validate(merged).model_dump(exclude_none=True)
+    db.commit()
+    return _settings(db, form)

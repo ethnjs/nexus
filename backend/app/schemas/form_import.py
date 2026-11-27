@@ -83,3 +83,17 @@ class ImportSource(BaseModel):
         ):
             raise ValueError("a google_sheet source has a spreadsheet_id and sheet_tab")
         return self
+
+
+class ImportSettingsRead(BaseModel):
+    """An import form's source and, by field id, how each live question reads it."""
+
+    source: ImportSource
+    mappings: dict[str, ImportMapping]
+
+
+class ImportSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identity: ImportIdentity | None = None
+    # A Google Sheet's tab, or an XLSX upload's sheet.
+    sheet_tab: str | None = Field(default=None, min_length=1)
