@@ -19,6 +19,7 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament.tracks import (
+    attach_trackless_events,
     clear_track_venue,
     live_primary_track_count,
     sync_sole_track_name,
@@ -304,6 +305,7 @@ def delete_track(
             )
         # Down to one live track: it now carries the tournament's name.
         sync_sole_track_name(db, tournament)
+        attach_trackless_events(db, tournament_id)
         db.commit()
         return TournamentTrackDeleteResult(
             purged=False,
@@ -323,6 +325,7 @@ def delete_track(
     db.delete(track)
     db.flush()
     sync_sole_track_name(db, tournament)
+    attach_trackless_events(db, tournament_id)
     db.commit()
     return TournamentTrackDeleteResult(purged=True, blocked_by=[], member_rows_deleted=member_rows)
 

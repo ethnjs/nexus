@@ -601,9 +601,14 @@ def test_a_simple_tournaments_track_keeps_the_tournament_name(client, db, td_use
     assert response.json()["name"] == td_tournament.name
 
 
-def test_deleting_down_to_one_track_renames_it(client, db, td_user, td_tournament):
+def test_deleting_down_to_one_track_renames_it_and_takes_its_events(
+    client, db, td_user, td_tournament
+):
     login(client, "td@test.com", "tdpass")
     extra = _create_track(client, td_tournament.id, "Test Writing").json()
+    # Only on the track being deleted, so the delete leaves it on none.
+    stranded = _event_on(db, td_tournament, extra["id"], name="Codebusters")
+    db.commit()
     # Two tracks: names are the TD's own.
     assert {
         t.name for t in db.query(TournamentTrack).filter_by(tournament_id=td_tournament.id)
@@ -612,7 +617,9 @@ def test_deleting_down_to_one_track_renames_it(client, db, td_user, td_tournamen
     assert (
         client.delete(f"/tournaments/{td_tournament.id}/tracks/{extra['id']}/").status_code == 200
     )
-    assert _sole_track(db, td_tournament.id).name == td_tournament.name
+    sole = _sole_track(db, td_tournament.id)
+    assert sole.name == td_tournament.name
+    assert [d.track_id for d in db.get(TournamentEvent, stranded.id).track_details] == [sole.id]
 
 
 # ---------------------------------------------------------------------------
