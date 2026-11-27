@@ -155,6 +155,11 @@ class MembershipLunchRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class GridRowRead(BaseModel):
+    option_id: str
+    label: str
+
+
 class MembershipCustomAnswerRead(BaseModel):
     """One answer to a non-reserved (not availability_/lunch_/track_status_/
     event_preference_) form field — everything that doesn't have a dedicated
@@ -170,6 +175,8 @@ class MembershipCustomAnswerRead(BaseModel):
     field_key: str
     question_type: str
     value: Any
+    # A grid answer is keyed by row id, so this names its rows, archived ones included.
+    rows: list[GridRowRead] | None = None
 
 
 def _flatten_track_statuses(v):

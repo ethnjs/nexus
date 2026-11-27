@@ -1,0 +1,50 @@
+/* The table needs room for its columns; below this it becomes one list per row. */
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.stacked {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .table {
+    display: none;
+  }
+
+  .stacked {
+    display: flex;
+  }
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* A visually hidden native radio carries focus and keyboard; the drawn circle shows state. */
+.input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.cell:has(.input:focus-visible)::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}

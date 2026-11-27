@@ -64,6 +64,20 @@ function coreIssuesFor(field: ValidatableField): string[] {
     }
   }
 
+  if (field.question_type === "grid_single" || field.question_type === "grid_multiple") {
+    for (const [noun, choices] of [
+      ["row", config.rows],
+      ["column", config.columns],
+    ] as const) {
+      const live = (choices ?? []).filter((c) => !c.is_archived);
+      if (live.length === 0) issues.push(`Add at least one ${noun}.`);
+      if (live.some((c) => !c.label.trim())) issues.push(`Every ${noun} needs a label.`);
+      const labels = live.map((c) => c.label.trim().toLowerCase());
+      if (new Set(labels).size !== labels.length)
+        issues.push(`${noun === "row" ? "Row" : "Column"} labels must be unique.`);
+    }
+  }
+
   return issues;
 }
 

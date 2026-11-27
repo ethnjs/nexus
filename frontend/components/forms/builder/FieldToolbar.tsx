@@ -9,7 +9,7 @@ import { withoutBranching } from "@/lib/forms/branching";
 import { useFieldExtension, useFormBuilderAddon } from "@/lib/forms/builderAddon";
 import { withoutCustomValues } from "@/lib/forms/customValues";
 import type { EditableField } from "@/lib/forms/editableField";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { BRANCHING_TYPES, GRID_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 export type ActivePopover = "key" | "addon" | null;
 
@@ -78,9 +78,16 @@ export function FieldToolbar({
       onFieldChange({ customValuesEnabled: true });
       return;
     }
+    const config = field.config ?? {};
     onFieldChange({
       customValuesEnabled: false,
-      config: { ...field.config, options: withoutCustomValues(field.config?.options ?? []) },
+      config: GRID_TYPES.includes(field.question_type)
+        ? {
+            ...config,
+            rows: withoutCustomValues(config.rows ?? []),
+            columns: withoutCustomValues(config.columns ?? []),
+          }
+        : { ...config, options: withoutCustomValues(config.options ?? []) },
     });
   }
 
@@ -171,7 +178,8 @@ export function FieldToolbar({
             <IconBranch size={14} />
           </Button>
         )}
-        {OPTION_BEARING_TYPES.includes(field.question_type) &&
+        {(OPTION_BEARING_TYPES.includes(field.question_type) ||
+          GRID_TYPES.includes(field.question_type)) &&
           extension.allowsCustomValues !== false && (
             <Button
               type="button"

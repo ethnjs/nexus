@@ -11,7 +11,12 @@ export function hasCustomValues(options: FormFieldOption[] | null | undefined): 
 // Seeds the builder's custom-values toggle from a loaded field, so it reflects
 // real data instead of hiding values an earlier session set up.
 export function deriveCustomValuesEnabled(field: FormField): boolean {
-  return hasCustomValues(field.config?.options);
+  const config = field.config;
+  return (
+    hasCustomValues(config?.options) ||
+    hasCustomValues(config?.rows) ||
+    hasCustomValues(config?.columns)
+  );
 }
 
 // Turning custom values off folds each value back into its label, so turning

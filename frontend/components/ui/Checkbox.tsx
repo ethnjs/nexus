@@ -11,6 +11,8 @@ interface CheckboxProps {
   locked?: boolean;
   /** Width/height in px. */
   size?: number;
+  /** For a checkbox with no visible label of its own, like a grid cell. */
+  ariaLabel?: string;
 }
 
 // Checkmark is hardcoded white rather than var(--color-text-inverse) —
@@ -19,7 +21,13 @@ interface CheckboxProps {
 // and 2.25 stroke, that puts the drawn ink's centre on 6,6, not the path's.
 const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 5.5l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`;
 
-export function Checkbox({ checked, onChange, locked = false, size = 16 }: CheckboxProps) {
+export function Checkbox({
+  checked,
+  onChange,
+  locked = false,
+  size = 16,
+  ariaLabel,
+}: CheckboxProps) {
   const color = locked ? "var(--color-text-tertiary)" : "var(--color-text-secondary)";
 
   return (
@@ -27,6 +35,7 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
       type="checkbox"
       checked={checked}
       disabled={locked}
+      aria-label={ariaLabel}
       onChange={(e) => onChange(e.target.checked)}
       style={{
         appearance: "none",

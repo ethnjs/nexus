@@ -25,11 +25,24 @@ function optionText(v: unknown): string {
   return typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
 }
 
-// Covers the three shapes snapshot_answer_value produces — a lone option, a
-// list of them (multi_select_checkbox), and a rank -> option map
-// (ranked_choice) — plus plain text answers, which pass through untouched.
-function formatValue(value: unknown): string {
+// Covers the shapes snapshot_answer_value produces — a lone option, a list of
+// them (multi_select_checkbox), a rank -> option map (ranked_choice) and a
+// row -> option(s) map (grids, named through `rows`) — plus plain text
+// answers, which pass through untouched.
+function formatValue({ value, rows }: MembershipCustomAnswer): string {
   if (value === null || value === undefined || value === "") return "—";
+  if (rows) {
+    const byRow = value as Record<string, unknown>;
+    const answered = rows.filter((row) => byRow[row.option_id] !== undefined);
+    if (answered.length === 0) return "—";
+    return answered
+      .map((row) => {
+        const picked = byRow[row.option_id];
+        const text = Array.isArray(picked) ? picked.map(optionText).join(", ") : optionText(picked);
+        return `${row.label}: ${text}`;
+      })
+      .join("; ");
+  }
   if (Array.isArray(value)) return value.length > 0 ? value.map(optionText).join(", ") : "—";
   if (isOptionSnapshot(value)) return optionText(value);
   if (typeof value === "object") {
@@ -56,7 +69,7 @@ export function CustomResponsesSection({
           {customResponses.map((answer, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a read-only list, never reordered
             <PanelField key={i} label={unslug(answer.field_key)}>
-              <FieldValue>{formatValue(answer.value)}</FieldValue>
+              <FieldValue>{formatValue(answer)}</FieldValue>
             </PanelField>
           ))}
         </FieldGrid>

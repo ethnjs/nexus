@@ -2097,7 +2097,36 @@ def test_get_membership_custom_responses_populated(client, td_user, td_tournamen
             "field_key": "favorite_color",
             "question_type": "single_select_dropdown",
             "value": "opt_1",
+            "rows": None,
         }
+    ]
+
+
+def test_custom_grid_response_names_its_rows(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    form = _make_form(db, td_user, td_tournament.id)
+    rows = [
+        {"option_id": "row_sat", "value": "sat", "label": "Saturday"},
+        {"option_id": "row_fri", "value": "fri", "label": "Friday", "is_archived": True},
+    ]
+    columns = [{"option_id": "col_am", "value": "am", "label": "Morning"}]
+    field = _make_field(
+        db,
+        form,
+        field_key="days",
+        question_type="grid_single",
+        config={"required": False, "rows": rows, "columns": columns},
+    )
+    _make_answer(db, u["id"], form, field, {"row_fri": {"option_id": "col_am"}})
+
+    login(client, "td@test.com", "tdpass")
+    custom = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/").json()[
+        "custom_responses"
+    ]
+    assert custom[0]["rows"] == [
+        {"option_id": "row_sat", "label": "Saturday"},
+        {"option_id": "row_fri", "label": "Friday"},
     ]
 
 

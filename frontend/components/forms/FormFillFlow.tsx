@@ -35,6 +35,13 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
     if (pickedCount < ranks) return "All ranks must be filled.";
     return undefined;
   }
+  if (field.question_type === "grid_single" || field.question_type === "grid_multiple") {
+    const answers = (value ?? {}) as Record<string, unknown>;
+    const unanswered = (field.config?.rows ?? []).some(
+      (row) => !row.is_archived && isBlank(answers[row.option_id]),
+    );
+    return required && unanswered ? "Answer every row." : undefined;
+  }
   if (required && isBlank(value)) return "This question is required.";
   if (hasBlankOther(value)) return "Type your Other answer.";
   return undefined;

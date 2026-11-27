@@ -1177,6 +1177,8 @@ export interface MembershipCustomAnswer {
   field_key: string;
   question_type: string;
   value: unknown;
+  /** Grids only: the rows `value` is keyed by. */
+  rows?: { option_id: string; label: string }[] | null;
 }
 
 // Matches RoleRead
@@ -1830,7 +1832,9 @@ export type FormQuestionType =
   | "multi_select_checkbox"
   | "ranked_choice"
   | "short_text"
-  | "long_text";
+  | "long_text"
+  | "grid_single"
+  | "grid_multiple";
 
 export type FormStatus = "draft" | "published" | "archived";
 export type FormOwnerType = "tournament" | "chapter";
@@ -1906,6 +1910,11 @@ export interface FormFieldConfig {
   track_status_enabled?: boolean;
   /** Availability only: append each option's shift times. Omitted means shown. */
   show_shift_times?: boolean;
+  /** Grids only. Archived ones stay so past answers keep their labels. */
+  rows?: FormFieldOption[];
+  columns?: FormFieldOption[];
+  /** grid_single only: each column may be picked in at most one row. */
+  one_per_column?: boolean;
 }
 
 export interface FormField {

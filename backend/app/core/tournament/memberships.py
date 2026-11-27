@@ -424,7 +424,8 @@ def get_custom_form_answers_bulk(
     """
     from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
     from app.models.models import Form, FormAnswer, FormField, FormResponse
-    from app.schemas.tournament.membership import MembershipCustomAnswerRead
+    from app.schemas.form import GRID_QUESTION_TYPES
+    from app.schemas.tournament.membership import GridRowRead, MembershipCustomAnswerRead
 
     if not user_ids:
         return {}
@@ -454,6 +455,12 @@ def get_custom_form_answers_bulk(
             field_key=field.field_key,
             question_type=field.question_type,
             value=answer.value,
+            rows=[
+                GridRowRead(option_id=row["option_id"], label=row["label"])
+                for row in (field.config or {})["rows"]
+            ]
+            if field.question_type in GRID_QUESTION_TYPES
+            else None,
         )
     return {user_id: list(latest.values()) for user_id, latest in by_user.items()}
 

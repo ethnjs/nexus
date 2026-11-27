@@ -18,6 +18,7 @@ import { useFieldExtension, useFormBuilderAddon, useOptionLabel } from "@/lib/fo
 import { cleanOption, type EditableField } from "@/lib/forms/editableField";
 import { effectiveFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeys";
 import {
+  GRID_TYPES,
   OPTION_BEARING_TYPES,
   OTHER_TYPES,
   QUESTION_TYPE_OPTIONS,
@@ -342,6 +343,10 @@ export function FieldCard({
     const needsStarterOption =
       OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     const starterOption = (extension.newOption ?? newOption)();
+    if (GRID_TYPES.includes(questionType)) {
+      if (!config.rows?.length) config.rows = [newOption()];
+      if (!config.columns?.length) config.columns = [newOption()];
+    }
     onFieldChange({
       question_type: questionType,
       config: needsStarterOption ? { ...config, options: [starterOption] } : config,

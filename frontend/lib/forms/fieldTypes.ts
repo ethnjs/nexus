@@ -8,8 +8,13 @@ export const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[]
   { value: "single_select_dropdown", label: "Dropdown" },
   { value: "multi_select_checkbox", label: "Checkboxes" },
   { value: "ranked_choice", label: "Ranked Choice" },
+  { value: "grid_single", label: "Multiple Choice Grid" },
+  { value: "grid_multiple", label: "Checkbox Grid" },
   { value: "acknowledgment", label: "Acknowledgment" },
 ];
+
+// Rows and columns in place of options; the answer is keyed by row.
+export const GRID_TYPES: FormQuestionType[] = ["grid_single", "grid_multiple"];
 
 // Types whose edit-mode body is an options editor rather than a plain preview.
 // An add-on can swap in its own editor (FieldExtension.OptionsEditor).
@@ -69,6 +74,8 @@ const CONFIG_KEYS_BY_TYPE: Record<FormQuestionType, (keyof FormFieldConfig)[]> =
     "options",
   ],
   ranked_choice: ["required", "ranks", "allow_duplicates", "options"],
+  grid_single: ["required", "one_per_column", "rows", "columns"],
+  grid_multiple: ["required", "rows", "columns"],
 };
 
 // Drops whatever config keys don't belong to `questionType` — a config

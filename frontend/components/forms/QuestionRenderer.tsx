@@ -2,6 +2,7 @@
 
 import { type ReactNode, useState } from "react";
 import { type EditableOption, OptionsEditor } from "@/components/forms/builder/OptionsEditor";
+import { type GridAnswer, GridQuestion } from "@/components/forms/GridQuestion";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
@@ -23,7 +24,12 @@ import type {
 } from "@/lib/api";
 import type { BranchTarget } from "@/lib/forms/branching";
 import { type ExtendableField, useFieldExtension } from "@/lib/forms/builderAddon";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES, OTHER_TYPES } from "@/lib/forms/fieldTypes";
+import {
+  BRANCHING_TYPES,
+  GRID_TYPES,
+  OPTION_BEARING_TYPES,
+  OTHER_TYPES,
+} from "@/lib/forms/fieldTypes";
 import {
   isOtherAnswer,
   OTHER_LABEL,
@@ -648,6 +654,34 @@ function QuestionBody({
       );
     }
 
+    case "grid_single":
+    case "grid_multiple": {
+      const answer = interactive ? ((value as GridAnswer | undefined) ?? {}) : {};
+      // A read-only answer keeps the archived rows and columns it used; filling hides them.
+      const showsPast = interactive && !editable;
+      const usedColumns = new Set(Object.values(answer).flat());
+      const rows = (config.rows ?? []).filter(
+        (row) => !row.is_archived || (showsPast && row.option_id in answer),
+      );
+      const columns = (config.columns ?? []).filter(
+        (column) => !column.is_archived || (showsPast && usedColumns.has(column.option_id)),
+      );
+      return (
+        <GridQuestion
+          rows={rows}
+          columns={columns}
+          multiple={field.question_type === "grid_multiple"}
+          onePerColumn={!!config.one_per_column}
+          value={answer}
+          onChange={onChange}
+          editable={!!editable}
+          removedIds={
+            new Set([...rows, ...columns].filter((c) => c.is_archived).map((c) => c.option_id))
+          }
+        />
+      );
+    }
+
     default:
       // reserved lunch_* config bodies (date + category picker) — not wired up yet.
       return (
@@ -719,6 +753,18 @@ function QuestionEditBody({
   const liveOptions = allOptions.filter((option) => !option.is_archived);
   const setOptions = (options: EditableOption[]) =>
     onFieldChange({ config: { ...field.config, options } });
+
+  if (GRID_TYPES.includes(field.question_type)) {
+    return (
+      <GridEditBody
+        field={field}
+        onFieldChange={onFieldChange}
+        customValuesEnabled={customValuesEnabled}
+        errors={errors}
+        allowArchive={allowArchive}
+      />
+    );
+  }
 
   if (OPTION_BEARING_TYPES.includes(field.question_type)) {
     return (
@@ -822,6 +868,78 @@ function QuestionEditBody({
   }
 
   return <QuestionBody field={field} interactive={false} />;
+}
+
+const sectionLabelStyle = {
+  fontFamily: "var(--font-sans)",
+  fontSize: "11px",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.07em",
+  color: "var(--color-text-tertiary)",
+  marginBottom: "6px",
+} as const;
+
+function GridEditBody({
+  field,
+  onFieldChange,
+  customValuesEnabled,
+  errors,
+  allowArchive,
+}: {
+  field: QuestionFieldData;
+  onFieldChange: (updates: FieldUpdate) => void;
+  customValuesEnabled?: boolean;
+  errors: string[];
+  allowArchive: boolean;
+}) {
+  const multiple = field.question_type === "grid_multiple";
+  const lists = [
+    { key: "rows", noun: "row", title: "Rows", bullet: "number" },
+    { key: "columns", noun: "column", title: "Columns", bullet: multiple ? "checkbox" : "radio" },
+  ] as const;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "24px" }}>
+        {lists.map((list) => (
+          <div key={list.key} style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={sectionLabelStyle}>{list.title}</div>
+            <OptionsEditor
+              options={(field.config?.[list.key] as EditableOption[] | undefined) ?? []}
+              onChange={(choices) =>
+                onFieldChange({ config: { ...field.config, [list.key]: choices } })
+              }
+              questionType={field.question_type}
+              noun={list.noun}
+              bulletType={list.bullet}
+              syncValueWithLabel={!customValuesEnabled}
+              allowArchive={allowArchive}
+              errors={errors}
+            />
+          </div>
+        ))}
+      </div>
+      {!multiple && (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "13px",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            Limit to one response per column
+          </span>
+          <Switch
+            checked={!!field.config?.one_per_column}
+            onChange={(checked) =>
+              onFieldChange({ config: { ...field.config, one_per_column: checked } })
+            }
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Acknowledgment's edit body — the one piece of its config with no default

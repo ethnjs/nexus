@@ -16,9 +16,15 @@ function unwrap(item: unknown): unknown {
 export function storedAnswerToInput(value: unknown): unknown {
   if (value === null || value === undefined) return undefined;
   if (Array.isArray(value)) return value.map(unwrap);
-  // A ranked_choice answer is {rank: snapshot}; a single select is one snapshot.
+  // A ranked_choice answer is {rank: snapshot}, a grid's {row: snapshot | [snapshots]}, and a
+  // single select one snapshot.
   if (typeof value === "object" && !("option_id" in value)) {
-    return Object.fromEntries(Object.entries(value).map(([rank, item]) => [rank, unwrap(item)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        Array.isArray(item) ? item.map(unwrap) : unwrap(item),
+      ]),
+    );
   }
   return unwrap(value);
 }
@@ -34,6 +40,8 @@ function storedItems(value: unknown): unknown[] {
  *  ones come from config, ones dropped from config entirely are rebuilt from
  *  the answer's own snapshot. Feed to QuestionRenderer's `removedOptions`. */
 export function removedPickedOptions(field: FormField, value: unknown): FormFieldOption[] {
+  // A grid keeps its archived rows and columns in config and labels them itself.
+  if (field.question_type === "grid_single" || field.question_type === "grid_multiple") return [];
   const all = field.config?.options ?? [];
   const live = new Set(all.filter((o) => !o.is_archived).map((o) => o.option_id));
   const removed = new Map<string, FormFieldOption>();

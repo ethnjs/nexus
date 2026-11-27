@@ -365,6 +365,11 @@ function entityColumn(key: string, ctx: ExportContext): ExportColumn | null {
     return memberColumn(key, label, ["custom"], (r) => {
       const answer = (r.member.custom_responses ?? []).find((a) => a.field_key === fieldKey);
       if (!answer || answer.value === null || answer.value === undefined) return "";
+      // A grid's {row: option(s)}: one column per row, in the question's row order.
+      if (answer.rows && typeof answer.value === "object") {
+        const byRow = answer.value as Record<string, unknown>;
+        return { spread: answer.rows.map((row) => optionText(byRow[row.option_id])) };
+      }
       // Stored as {"1": option, "2": option}; one column per rank.
       if (answer.question_type === "ranked_choice" && typeof answer.value === "object") {
         const ranked = Object.entries(answer.value as Record<string, unknown>)

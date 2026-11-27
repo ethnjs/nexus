@@ -176,6 +176,11 @@ interface OptionsEditorProps {
   allowArchive?: boolean;
   /** Offers an "add Other" link, for a question whose respondent may type their own answer. */
   allowOther?: boolean;
+  /** What one entry is called in its placeholder, Add button and errors — a grid edits
+      rows and columns with this same list. */
+  noun?: "option" | "row" | "column";
+  /** Overrides the bullet questionType would pick. */
+  bulletType?: BulletType;
   /** This field's validation messages (useFormValidation's per-field issues) —
       only consulted to gate the two option-shaped ones ("needs a label"/
       "must be unique") so a row's own Input.error stays blank until a Save
@@ -204,6 +209,8 @@ export function OptionsEditor({
   errors = [],
   allowArchive = false,
   allowOther = false,
+  noun = "option",
+  bulletType: bulletOverride,
 }: OptionsEditorProps) {
   // `options` carries archived entries too, but they're not part of the list
   // a respondent sees — they're listed separately below so they don't join
@@ -219,14 +226,15 @@ export function OptionsEditor({
   const archivedOptions = options.filter((o) => o.is_archived);
   const canAddOther = allowOther && !options.some((o) => o.is_other);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const bulletType = bulletTypeFor(questionType);
+  const bulletType = bulletOverride ?? bulletTypeFor(questionType);
+  const Noun = noun[0].toUpperCase() + noun.slice(1);
 
   // Gates, not the per-row verdict itself — a Save attempt found *some* row
   // missing a label / colliding with another, so it's worth checking each
   // row against its own data; before that attempt, these stay false and no
   // row shows red no matter what's typed.
-  const flagMissingLabels = errors.includes("Every option needs a label.");
-  const flagDuplicateLabels = errors.includes("Option labels must be unique.");
+  const flagMissingLabels = errors.includes(`Every ${noun} needs a label.`);
+  const flagDuplicateLabels = errors.includes(`${Noun} labels must be unique.`);
   const duplicateKeys = new Set<string>();
   if (flagDuplicateLabels) {
     const counts = new Map<string, number>();
@@ -239,7 +247,7 @@ export function OptionsEditor({
   function errorFor(option: EditableOption): string | undefined {
     if (flagMissingLabels && !option.label.trim()) return "Label is required.";
     if (flagDuplicateLabels && duplicateKeys.has(option.label.trim().toLowerCase()))
-      return "This label is used by another option.";
+      return `This label is used by another ${noun}.`;
     return undefined;
   }
   // Set right before inserting a row from Enter, so that row can claim focus
@@ -352,6 +360,7 @@ export function OptionsEditor({
               extra={extraFor?.(option)}
               error={errorFor(option)}
               canRemove={liveOptions.length > 1}
+              placeholder={Noun}
               allowArchive={allowArchive}
               autoFocus={option.clientKey === focusKey}
               onChange={(label) => updateOption(option.clientKey, label)}
@@ -383,6 +392,7 @@ export function OptionsEditor({
         ))}
       </DndContext>
       <AddOptionRow
+        noun={noun}
         bulletType={bulletType}
         number={liveOptions.length + otherOptions.length + 1}
         displayStyle={displayStyle}
@@ -481,12 +491,14 @@ function ArchivedOptions({
 // number the next option will get); other types have no per-option bullet to
 // echo, so they keep the plain "+ Add option" button.
 function AddOptionRow({
+  noun,
   bulletType,
   number,
   displayStyle,
   onClick,
   onAddOther,
 }: {
+  noun: string;
   bulletType: BulletType;
   number: number;
   displayStyle?: "list" | "buttons";
@@ -502,7 +514,7 @@ function AddOptionRow({
         onClick={onClick}
         style={{ alignSelf: "flex-start", marginTop: "6px" }}
       >
-        <IconPlus size={12} /> Add option
+        <IconPlus size={12} /> Add {noun}
       </Button>
     );
   }
@@ -517,7 +529,7 @@ function AddOptionRow({
         onClick={onClick}
         style={{ color: "var(--color-text-tertiary)" }}
       >
-        Add option
+        Add {noun}
       </Button>
       {onAddOther && (
         <>
@@ -557,11 +569,13 @@ function OptionRow({
   allowArchive,
   autoFocus,
   fixed = false,
+  placeholder = "Option",
   onChange,
   onRemove,
   onEnter,
 }: {
   option: EditableOption;
+  placeholder?: string;
   bulletType: BulletType;
   /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
   number: number;
@@ -666,7 +680,7 @@ function OptionRow({
           value={option.label}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Option"
+          placeholder={placeholder}
           error={error}
           locked={fixed}
           title={fixed ? "Respondents type their own answer" : undefined}

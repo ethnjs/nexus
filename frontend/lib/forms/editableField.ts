@@ -7,7 +7,12 @@ import type {
   FormQuestionType,
 } from "@/lib/api";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeys";
-import { BRANCHING_TYPES, OPTION_BEARING_TYPES, OTHER_TYPES } from "@/lib/forms/fieldTypes";
+import {
+  BRANCHING_TYPES,
+  GRID_TYPES,
+  OPTION_BEARING_TYPES,
+  OTHER_TYPES,
+} from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -55,15 +60,28 @@ export function cleanOption(option: StagedOption, questionType: FormQuestionType
 // options fetched from the server have a real option_id (usable as the key)
 // but no clientKey, which OptionsEditor's rows and dnd-kit both need.
 export function withOptionClientKeys(field: FormField): FormField {
-  if (!field.config?.options?.length) return field;
+  if (!field.config) return field;
+  const keyed = (options: FormFieldOption[]) =>
+    options.map((opt) => ({ ...opt, clientKey: opt.option_id }) as EditableOption);
+  const { options, rows, columns } = field.config;
   return {
     ...field,
     config: {
       ...field.config,
-      options: field.config.options.map(
-        (opt) => ({ ...opt, clientKey: opt.option_id }) as EditableOption,
-      ),
+      ...(options ? { options: keyed(options) } : {}),
+      ...(rows ? { rows: keyed(rows) } : {}),
+      ...(columns ? { columns: keyed(columns) } : {}),
     },
+  };
+}
+
+// A grid row or column, with only the keys GridChoice declares.
+function cleanGridChoice(choice: StagedOption): FormFieldOption {
+  return {
+    option_id: choice.option_id,
+    value: choice.value,
+    label: choice.label,
+    ...(choice.is_archived !== undefined ? { is_archived: choice.is_archived } : {}),
   };
 }
 
@@ -105,6 +123,13 @@ export function toFieldInput(field: EditableField): FormFieldInput {
   // batch. Enforced here as well as at each staging site so no editing path
   // can produce a payload the server refuses.
   if (!OPTION_BEARING_TYPES.includes(field.question_type)) delete config.options;
+  if (GRID_TYPES.includes(field.question_type)) {
+    config.rows = (config.rows ?? []).map(cleanGridChoice);
+    config.columns = (config.columns ?? []).map(cleanGridChoice);
+  } else {
+    delete config.rows;
+    delete config.columns;
+  }
   // Last line of defence: whatever path staged the options, only schema keys
   // (and never clientKey) leave the browser.
   if (config.options) {
