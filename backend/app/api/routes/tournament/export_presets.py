@@ -4,10 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.filter_conditions import validate_filter
 from app.core.tournament import get_scoped_or_404, get_tournament
+from app.core.tournament.display_config import KNOWN_EVENT_FILTER_KEYS, KNOWN_FILTER_KEYS
+from app.core.tournament.member_filters import roster_condition_problem
 from app.core.tournament.permissions import MANAGE_MEMBERS, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentExportPreset, User
+from app.schemas.tournament.display_config import FilterGroup
 from app.schemas.tournament.export_preset import (
     ExportPresetColumn,
     ExportPresetCreate,
@@ -45,6 +49,13 @@ def _check_sorts(sorts: list[ExportPresetSort], columns: list[ExportPresetColumn
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
+
+
+def _check_filters(member_filter: FilterGroup | None, event_filter: FilterGroup | None) -> None:
+    if member_filter is not None:
+        validate_filter(member_filter, KNOWN_FILTER_KEYS, roster_condition_problem)
+    if event_filter is not None:
+        validate_filter(event_filter, KNOWN_EVENT_FILTER_KEYS)
 
 
 def _commit(db: Session, preset: TournamentExportPreset) -> None:
@@ -87,6 +98,7 @@ def create_export_preset(
 ):
     get_tournament(tournament_id, db)
     _check_sorts(payload.sorts, payload.columns)
+    _check_filters(payload.member_filter, payload.event_filter)
     if _name_taken(db, tournament_id, payload.name):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NAME_TAKEN)
 
@@ -116,6 +128,7 @@ def update_export_preset(
         db, TournamentExportPreset, preset_id, tournament_id, "Export preset"
     )
 
+    _check_filters(payload.member_filter, payload.event_filter)
     # Null means "not sent" for every field; none of them can be cleared to null.
     updates = payload.model_dump(exclude_none=True)
     if "name" in updates and _name_taken(

@@ -5,6 +5,16 @@ from app.models.models import TournamentExportPreset, TournamentRole
 from tests.conftest import grant_role, login
 
 
+def _cond(field, *values, group=None, op="any_of") -> dict:
+    """A filter row as the presets store it: an unset group is left out."""
+    row = {"field": field, "op": op, "values": list(values)}
+    return row if group is None else {**row, "group": group}
+
+
+def _filter(*conditions) -> dict:
+    return {"op": "and", "conditions": list(conditions)}
+
+
 def _url(tournament_id: int, preset_id: int | None = None) -> str:
     base = f"/tournaments/{tournament_id}/export-presets/"
     return base if preset_id is None else f"{base}{preset_id}/"
@@ -285,10 +295,11 @@ def test_create_rejects_invalid_payloads(client, td_user, td_tournament):
         "repeated column": _payload(columns=[{"key": "email"}, {"key": "email"}], sorts=[]),
         "sort not a column": _payload(sorts=[{"field": "phone", "direction": "asc"}]),
         "bad sort direction": _payload(sorts=[{"field": "email", "direction": "sideways"}]),
-        # Filters are split by vocabulary; there's no bare "filters" field.
-        "bare filters field": {**_payload(), "filters": {"role": ["3"]}},
-        "unknown member key": _payload(member_filters={"shoe_size": ["9"]}),
-        "unknown event key": _payload(event_filters={"role": ["3"]}),
+        # Filters are split by vocabulary; there's no bare "filter" field.
+        "bare filter field": {**_payload(), "filter": _filter(_cond("role", "3"))},
+        "unknown member field": _payload(member_filter=_filter(_cond("shoe_size", "9"))),
+        "unknown event field": _payload(event_filter=_filter(_cond("role", "3"))),
+        "ungrouped track status": _payload(member_filter=_filter(_cond("track", "confirmed"))),
         "extra column option": _payload(columns=[{"key": "email", "width": 3}], sorts=[]),
     }
     for label, payload in cases.items():
@@ -418,40 +429,41 @@ def test_output_type_rejects_unknown_value(client, td_user, td_tournament):
 def test_filters_default_to_empty(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     preset = _create(client, td_tournament.id)
-    assert preset["member_filters"] == {}
-    assert preset["event_filters"] == {}
+    assert preset["member_filter"] == _filter()
+    assert preset["event_filter"] == _filter()
 
 
 def test_filters_round_trip(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    preset = _create(
-        client,
-        td_tournament.id,
-        member_filters={"role": ["3"], "track": ["7:confirmed"]},
-        event_filters={"division": ["C"]},
-    )
-    assert preset["member_filters"] == {"role": ["3"], "track": ["7:confirmed"]}
-    assert preset["event_filters"] == {"division": ["C"]}
+    members = _filter(_cond("role", "3"), _cond("track", "confirmed", group="7"))
+    events = _filter(_cond("division", "C", op="none_of"))
+    preset = _create(client, td_tournament.id, member_filter=members, event_filter=events)
+    assert preset["member_filter"] == members
+    assert preset["event_filter"] == events
 
-    response = client.patch(_url(td_tournament.id, preset["id"]), json={"member_filters": {}})
+    response = client.patch(_url(td_tournament.id, preset["id"]), json={"member_filter": _filter()})
     assert response.status_code == 200
     body = client.get(_url(td_tournament.id)).json()[0]
-    assert body["member_filters"] == {}
+    assert body["member_filter"] == _filter()
     # Left out of the PATCH, so untouched.
-    assert body["event_filters"] == {"division": ["C"]}
+    assert body["event_filter"] == events
 
 
 def test_filters_keep_unresolvable_values(client, td_user, td_tournament):
-    """Keys are checked, values aren't: a since-deleted track is inert."""
+    """Fields are checked, values aren't: a since-deleted track is inert."""
     login(client, "td@test.com", "tdpass")
-    preset = _create(client, td_tournament.id, member_filters={"track": ["99999:confirmed"]})
-    assert preset["member_filters"] == {"track": ["99999:confirmed"]}
+    stale = _filter(_cond("track", "confirmed", group="99999"))
+    preset = _create(client, td_tournament.id, member_filter=stale)
+    assert preset["member_filter"] == stale
 
 
-def test_update_rejects_unknown_filter_keys(client, td_user, td_tournament):
+def test_update_rejects_unknown_filter_fields(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     preset = _create(client, td_tournament.id)
-    for body in ({"member_filters": {"shoe_size": ["9"]}}, {"event_filters": {"role": ["3"]}}):
+    for body in (
+        {"member_filter": _filter(_cond("shoe_size", "9"))},
+        {"event_filter": _filter(_cond("role", "3"))},
+    ):
         assert client.patch(_url(td_tournament.id, preset["id"]), json=body).status_code == 422, (
             body
         )

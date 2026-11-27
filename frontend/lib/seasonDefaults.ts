@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { FilterOption } from "@/components/ui/FilterModal";
 import {
   ApiError,
   EVENT_FORMAT_LABELS,
   EVENT_FORMATS,
+  type FilterOptionItem,
   type SeasonEvent,
   seasonEventsApi,
   type TournamentEvent,
@@ -22,7 +22,7 @@ export const NO_SEASON_DEFAULTS = "This season's events don't list this event an
 export const NO_FORMAT = "none";
 
 /** Every format, then "None" with the given value. */
-export function formatOptions(none: string = NO_FORMAT): FilterOption[] {
+export function formatOptions(none: string = NO_FORMAT): FilterOptionItem[] {
   return [
     ...EVENT_FORMATS.map((f) => ({ value: f, label: EVENT_FORMAT_LABELS[f] })),
     { value: none, label: "None" },
@@ -30,14 +30,14 @@ export function formatOptions(none: string = NO_FORMAT): FilterOption[] {
 }
 
 /** For a mass editor's flag, where "" leaves it unchanged. */
-export const ON_OFF: FilterOption[] = [
+export const ON_OFF: FilterOptionItem[] = [
   { value: "on", label: "On" },
   { value: "off", label: "Off" },
 ];
 
 export const onOff = (v: boolean | undefined) => (v === undefined ? "" : v ? "on" : "off");
 
-export const YES_NO_OPTIONS: FilterOption[] = [
+export const YES_NO_OPTIONS: FilterOptionItem[] = [
   { value: "yes", label: "Yes" },
   { value: "no", label: "No" },
 ];

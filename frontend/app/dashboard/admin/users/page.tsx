@@ -4,14 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
 import { ADMIN_USER_PANEL_WIDTH, AdminUserPanel } from "@/components/admin/AdminUserPanel";
 import {
-  ADMIN_USERS_FILTER_KEYS,
-  AdminUsersFilterModal,
-  type AdminUsersFilterState,
-  adminUsersFilterFromStored,
+  adminUserFilterFields,
   affiliationOptions,
   type TournamentFilterOption,
-  userPassesFilters,
-} from "@/components/admin/AdminUsersFilterModal";
+} from "@/components/admin/adminUserFilterFields";
 import { DeleteUserModal } from "@/components/admin/DeleteUserModal";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Badge } from "@/components/ui/Badge";
@@ -19,8 +15,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, filterStateToStored, isFilterActive } from "@/components/ui/FilterModal";
 import { HoverCard } from "@/components/ui/HoverCard";
 import {
   IconCheckCircle,
@@ -62,9 +58,13 @@ import {
   ApiError,
   adminTournamentsApi,
   adminUsersApi,
+  type FilterGroup,
   usersApi,
 } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { userAffiliation, userYearLevel } from "@/lib/personDisplay";
 import {
   type SortRule,
@@ -359,9 +359,8 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUserListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<AdminUsersFilterState>(() =>
-    emptyFilterState(ADMIN_USERS_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
+  const savedFilters = useSavedFilters(ADMIN_USERS_SURFACE);
   const [sortRules, setSortRules] =
     useState<SortRule<AdminUserSortField>[]>(DEFAULT_ADMIN_USER_SORT);
   const [tournamentOptions, setTournamentOptions] = useState<TournamentFilterOption[]>([]);
@@ -397,7 +396,7 @@ export default function AdminUsersPage() {
       .getDisplayConfig()
       .then((config) => {
         const surface = config[ADMIN_USERS_SURFACE];
-        setFilters(adminUsersFilterFromStored(surface?.filters));
+        setFilter(surface?.filter ?? emptyFilter());
         const sorts = sortRulesFromStored(surface?.sorts, isAdminUserSortField);
         if (sorts.length > 0) setSortRules(sorts);
       })
@@ -413,12 +412,12 @@ export default function AdminUsersPage() {
   // Re-reads before writing, since a PUT replaces every surface at once. Never
   // rejects: failing to remember a sort isn't worth interrupting the table.
   const persistView = useCallback(
-    (patch: { filters?: AdminUsersFilterState; sortRules?: SortRule<AdminUserSortField>[] }) =>
+    (patch: { filter?: FilterGroup; sortRules?: SortRule<AdminUserSortField>[] }) =>
       usersApi
         .getDisplayConfig()
         .then((fresh) => {
           const surface = { ...{ hidden: [] }, ...fresh[ADMIN_USERS_SURFACE] };
-          if (patch.filters) surface.filters = filterStateToStored(patch.filters);
+          if (patch.filter) surface.filter = patch.filter;
           if (patch.sortRules) surface.sorts = sortRulesToStored(patch.sortRules);
           return usersApi.setDisplayConfig({ ...fresh, [ADMIN_USERS_SURFACE]: surface });
         })
@@ -426,10 +425,16 @@ export default function AdminUsersPage() {
     [],
   );
 
-  function applyFilters(next: AdminUsersFilterState) {
-    setFilters(next);
-    persistView({ filters: next });
+  function applyFilter(next: FilterGroup) {
+    setFilter(next);
+    persistView({ filter: next });
   }
+
+  const filterFields = useMemo(
+    () => adminUserFilterFields(affiliationOptions(users ?? []), tournamentOptions),
+    [users, tournamentOptions],
+  );
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
 
   function applySort(next: SortRule<AdminUserSortField>[]) {
     setSortRules(next);
@@ -443,7 +448,7 @@ export default function AdminUsersPage() {
     const rows = users ?? [];
     const query = search.trim().toLowerCase();
     const matching = rows.filter((u) => {
-      if (!userPassesFilters(u, filters)) return false;
+      if (!matchesFilter(u, filter, filterFieldMap)) return false;
       if (!query) return true;
       return (
         userName(u).toLowerCase().includes(query) ||
@@ -452,7 +457,7 @@ export default function AdminUsersPage() {
       );
     });
     return sortRows(matching, sortRules, adminUserSortValue, adminUserSortTiebreak);
-  }, [users, search, filters, sortRules]);
+  }, [users, search, filter, filterFieldMap, sortRules]);
 
   // Position in the *filtered* order, so the arrows step through what the
   // reader is actually looking at rather than the unfiltered list.
@@ -494,7 +499,8 @@ export default function AdminUsersPage() {
     if (panelUserId !== null && ids.includes(panelUserId)) setPanelUserId(null);
   }
 
-  const isFiltered = search.trim() !== "" || isFilterActive(filters);
+  const filterCount = countActiveConditions(filter);
+  const isFiltered = search.trim() !== "" || filterCount > 0;
 
   return (
     <>
@@ -529,9 +535,13 @@ export default function AdminUsersPage() {
           />
         </div>
         <FilterButton
-          active={isFilterActive(filters)}
+          count={filterCount}
           onOpen={() => setShowFilterModal(true)}
-          onClear={() => applyFilters(emptyFilterState(ADMIN_USERS_FILTER_KEYS))}
+          onClear={() => applyFilter(emptyFilter())}
+          saved={savedFilters}
+          applied={filter}
+          onApplySaved={applyFilter}
+          hotkey
         />
         <SortButton
           active={!sameSortRules(sortRules, DEFAULT_ADMIN_USER_SORT)}
@@ -541,11 +551,12 @@ export default function AdminUsersPage() {
       </div>
 
       {showFilterModal && (
-        <AdminUsersFilterModal
-          affiliations={affiliationOptions(users ?? [])}
-          tournaments={tournamentOptions}
-          filters={filters}
-          onApply={applyFilters}
+        <FilterBuilderModal
+          title="Filter users"
+          fields={filterFields}
+          filter={filter}
+          saved={savedFilters}
+          onApply={applyFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}

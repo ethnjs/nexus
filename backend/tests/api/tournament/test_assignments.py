@@ -6,6 +6,7 @@ rather than in code: the two partial unique indexes, and the composite FK that
 keeps an assignment's membership_id and membership_role_id from disagreeing.
 """
 
+import json
 from datetime import UTC, date, datetime, time, timedelta
 from types import SimpleNamespace
 
@@ -1372,19 +1373,31 @@ class TestMembershipReads:
     def _staffed_track_id(self, db):
         return _staffing_rows(db).one().tournament_track_id
 
+    def _roster(self, client, tournament, *conditions) -> list[int]:
+        group = json.dumps({"conditions": list(conditions)})
+        rows = client.get(f"/tournaments/{tournament.id}/members/", params={"filter": group})
+        return [m["user"]["id"] for m in rows.json()]
+
+    def _assigned(self, track_id, op, *values) -> dict:
+        return {
+            "field": "assigned",
+            "group": str(track_id),
+            "op": op,
+            "values": [str(v) for v in values],
+        }
+
     def test_assigned_filters_by_track(self, client, db, td_user, td_tournament, other_user):
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
         track_id = self._staffed_track_id(db)
-        url = f"/tournaments/{td_tournament.id}/members/"
 
-        assigned = client.get(f"{url}?assigned={track_id}:assigned").json()
-        unassigned = client.get(f"{url}?assigned={track_id}:unassigned").json()
+        assigned = self._roster(client, td_tournament, self._assigned(track_id, "not_empty"))
+        unassigned = self._roster(client, td_tournament, self._assigned(track_id, "empty"))
 
-        assert [m["user"]["id"] for m in assigned] == [other_user.id]
-        assert other_user.id not in [m["user"]["id"] for m in unassigned]
+        assert assigned == [other_user.id]
+        assert other_user.id not in unassigned
         # The TD themselves is a member too, and has no assignments.
-        assert td_user.id in [m["user"]["id"] for m in unassigned]
+        assert td_user.id in unassigned
 
     def test_unassigned_is_scoped_to_its_track(
         self, client, db, td_user, td_tournament, other_user
@@ -1392,24 +1405,26 @@ class TestMembershipReads:
         """Staffed on one track is still unassigned on another."""
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
-        url = f"/tournaments/{td_tournament.id}/members/"
 
-        rows = client.get(f"{url}?assigned=999999:unassigned").json()
+        rows = self._roster(client, td_tournament, self._assigned(999999, "empty"))
 
-        assert other_user.id in [m["user"]["id"] for m in rows]
+        assert other_user.id in rows
 
-    def test_an_unnarrowed_or_both_values_chip_narrows_nothing(
-        self, client, db, td_user, td_tournament, other_user
-    ):
+    def test_assigned_events_on_a_track(self, client, db, td_user, td_tournament, other_user):
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
-        track_id = self._staffed_track_id(db)
-        url = f"/tournaments/{td_tournament.id}/members/"
+        row = _staffing_rows(db).one()
+        track_id, event_id = row.tournament_track_id, row.tournament_event_id
 
-        assert len(client.get(url).json()) == 2
-        assert len(client.get(f"{url}?assigned={track_id}:__any__").json()) == 2
-        both = f"{url}?assigned={track_id}:assigned&assigned={track_id}:unassigned"
-        assert len(client.get(both).json()) == 2
+        def on(op, *events):
+            return self._roster(client, td_tournament, self._assigned(track_id, op, *events))
+
+        assert on("any_of", event_id) == [other_user.id]
+        assert on("all_of", event_id) == [other_user.id]
+        assert other_user.id not in on("none_of", event_id)
+        # The same event, asked about on another track, matches nobody.
+        other_track = self._assigned(999999, "any_of", event_id)
+        assert self._roster(client, td_tournament, other_track) == []
 
     def test_the_assignments_group_carries_them(
         self, client, db, td_user, td_tournament, other_user
@@ -1418,8 +1433,10 @@ class TestMembershipReads:
         self._assign_other_user(client, db, td_tournament, other_user)
         track_id = self._staffed_track_id(db)
 
+        assigned = self._assigned(track_id, "not_empty")
         rows = client.get(
-            f"/tournaments/{td_tournament.id}/members/?fields=assignments&assigned={track_id}:assigned"
+            f"/tournaments/{td_tournament.id}/members/",
+            params={"fields": "assignments", "filter": json.dumps({"conditions": [assigned]})},
         ).json()
 
         assert rows[0]["assignments"][0]["event"]["name"] == "Anatomy"

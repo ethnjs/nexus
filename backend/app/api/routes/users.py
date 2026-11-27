@@ -23,11 +23,18 @@ from app.core.profile_status import (
     is_onboarding_complete,
     is_profile_complete,
 )
+from app.core.saved_filters import (
+    create_saved_filter,
+    get_saved_filter_or_404,
+    list_saved_filters,
+    update_saved_filter,
+)
 from app.core.users import (
     check_if_email_exists,
     find_user_by_id,
     require_not_last_admin,
     tournament_membership_loads,
+    user_surface,
     validate_user_display_config,
 )
 from app.db.session import get_db
@@ -49,6 +56,7 @@ from app.schemas.auth import (
     MessageResponse,
     OAuthIdentityResponse,
 )
+from app.schemas.saved_filter import SavedFilterCreate, SavedFilterRead, SavedFilterUpdate
 from app.schemas.session import SessionResponse
 from app.schemas.tournament.display_config import DisplayConfigSurface
 from app.schemas.user import (
@@ -79,13 +87,26 @@ def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Global user list, with each user's affiliation and year level. Admin only."""
-    return (
+    """Global user list, with each user's affiliation, year level and whether
+    their profile is complete. Admin only."""
+    users = (
         db.query(User)
-        .options(selectinload(User.university), selectinload(User.memberships))
+        .options(
+            selectinload(User.university),
+            selectinload(User.memberships),
+            # Loaded so the completeness check reads them rather than querying per user.
+            selectinload(User.competition_experience),
+            selectinload(User.volunteer_experience),
+        )
         .order_by(User.last_name, User.first_name)
         .all()
     )
+    responses = []
+    for user in users:
+        response = AdminUserListResponse.model_validate(user)
+        response.is_profile_complete = is_profile_complete(user)
+        responses.append(response)
+    return responses
 
 
 # ---------------------------------------------------------------------------
@@ -622,3 +643,52 @@ def update_my_display_config(
     user.display_config = {surface: config.model_dump() for surface, config in payload.items()}
     db.commit()
     return user.display_config
+
+
+# ---------------------------------------------------------------------------
+# /users/me/saved-filters/ — the caller's named filters on surfaces outside
+# any tournament. Tournament tables keep theirs under the tournament.
+# ---------------------------------------------------------------------------
+@router.get("/users/me/saved-filters/", response_model=list[SavedFilterRead])
+def list_my_saved_filters(
+    surface: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return list_saved_filters(db, user.id, None, surface)
+
+
+@router.post(
+    "/users/me/saved-filters/",
+    response_model=SavedFilterRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_my_saved_filter(
+    payload: SavedFilterCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    filter_keys, _ = user_surface(user, payload.surface)
+    return create_saved_filter(db, user.id, None, payload, filter_keys)
+
+
+@router.patch("/users/me/saved-filters/{saved_id}/", response_model=SavedFilterRead)
+def update_my_saved_filter(
+    saved_id: int,
+    payload: SavedFilterUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    saved = get_saved_filter_or_404(db, saved_id, user.id, None)
+    filter_keys, _ = user_surface(user, saved.surface)
+    return update_saved_filter(db, saved, payload, filter_keys)
+
+
+@router.delete("/users/me/saved-filters/{saved_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_saved_filter(
+    saved_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    db.delete(get_saved_filter_or_404(db, saved_id, user.id, None))
+    db.commit()

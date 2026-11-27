@@ -17,13 +17,14 @@ It refuses to run unless `APP_ENV` is `development` or `preview`.
 | `users.email` | `user<id>@nexus.dev` |
 | `users.phone` | `555-<id, zero-padded to 7>`. Blank phones stay blank. |
 | `users.hashed_password` | the hash of `--password` (default `test1234`) |
-| `sessions`, `verification_tokens` | truncated |
+| `audit_log_entries.actor_email` | the actor's scrubbed email, or `NULL` if their account is gone |
+| `sessions`, `verification_tokens`, `email_codes` | truncated |
 
 Names, profiles, form responses and every id are left as they are.
 
 - **Ids are never changed.** Track, shift, event and role ids are embedded in form field keys (`availability_7`, `lunch_7_veg`), field configs, answer values, display configs, export presets and form prerequisites. Scrubbing in place keeps them all valid. Remapping ids would mean rewriting them inside JSON, and a missed one fails silently.
 - **`nexus.dev`** matches the dev seed accounts and is unregistered, so an email sent from the copy bounces. Don't use `.test`: Pydantic's `EmailStr` rejects special-use TLDs, so every response containing a user email would fail validation.
-- **Sessions and tokens are truncated** because prod sessions mean nothing on the copy, and an unused password-reset token would let someone set a password there.
+- **Sessions, codes and tokens are truncated** because prod sessions mean nothing on the copy, an unused password-reset token would let someone set a password there, and pending email codes hold real addresses and password hashes.
 
 ## Flags
 

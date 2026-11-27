@@ -2,35 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  EVENT_TYPE_OPTIONS,
-  EventsFilterModal,
-  type EventsFilterState,
-  eventBuildingOptions,
-  eventCategoryOptions,
-  eventDivisionOptions,
-  eventShiftOptions,
-  eventsFilterFromStored,
-  eventsFilterToStored,
-  eventTrackOptions,
-  isEventsFilterActive,
-} from "@/components/tournament/events/EventsFilterModal";
 import { BuiltinOptions } from "@/components/tournament/exports/BuiltinOptions";
 import { ExportPreview } from "@/components/tournament/exports/ExportPreview";
 import { type BuilderDraft, PresetBuilder } from "@/components/tournament/exports/PresetBuilder";
-import {
-  MembersFilterModal,
-  type MembersFilterState,
-  membersFilterFromStored,
-  membersFilterParams,
-  membersFilterToStored,
-} from "@/components/tournament/members/MembersFilterModal";
+import { memberFilterFields } from "@/components/tournament/members/memberFilterFields";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { isFilterActive } from "@/components/ui/FilterModal";
 import {
   IconChevronLeft,
   IconCopy,
@@ -52,6 +33,7 @@ import {
   type ExportPreset,
   type ExportPresetInput,
   exportPresetsApi,
+  type FilterGroup,
   type MembershipFull,
   membersApi,
   type RoleWithMemberCount,
@@ -74,11 +56,14 @@ import {
   computeExport,
   type ExportChoice,
   eventIdsFor,
+  exportEventFields,
   exportFilenameFor,
   fieldsForChoice,
   logExport,
   trackNamesOf,
 } from "@/lib/exports/run";
+import { countActiveConditions, emptyFilter } from "@/lib/filters/model";
+import { useMemberFilterOptions } from "@/lib/filters/useMemberFilterOptions";
 import type { SortRule } from "@/lib/sorting";
 import { useActionToast } from "@/lib/useActionToast";
 import { useExitAnimation } from "@/lib/useExitAnimation";
@@ -117,17 +102,9 @@ function draftFromPreset(preset: ExportPreset): BuilderDraft {
 }
 
 /** Everything a saved preset stores, as one string — the dirty check. */
-function snapshot(
-  draft: BuilderDraft,
-  members: MembersFilterState,
-  events: EventsFilterState,
-): string {
-  return JSON.stringify([draft, membersFilterToStored(members), eventsFilterToStored(events)]);
+function snapshot(draft: BuilderDraft, members: FilterGroup, events: FilterGroup): string {
+  return JSON.stringify([draft, members, events]);
 }
-
-// Every export starts from everyone: never the opening page's filters.
-const NO_MEMBER_FILTERS = membersFilterFromStored({});
-const NO_EVENT_FILTERS = eventsFilterFromStored({});
 
 interface ExportModalProps {
   tournament: Tournament;
@@ -192,8 +169,14 @@ export function ExportModal({
   const [selection, setSelection] = useState<Selection | null>(null);
   // The side panel: the export list, or the picked export's settings slid in over it.
   const [panel, setPanel] = useState<"list" | "config">("list");
-  const [memberFilters, setMemberFilters] = useState(NO_MEMBER_FILTERS);
-  const [eventFilters, setEventFilters] = useState(NO_EVENT_FILTERS);
+  // Every export starts from everyone: never the opening page's filters.
+  const [memberFilter, setMemberFilter] = useState<FilterGroup>(emptyFilter);
+  const [eventFilter, setEventFilter] = useState<FilterGroup>(emptyFilter);
+  const {
+    options: memberFilterOptions,
+    error: memberFilterOptionsError,
+    load: loadMemberFilterOptions,
+  } = useMemberFilterOptions(tournamentId);
   const [trackId, setTrackId] = useState<number | null>(initialTrackId);
   const [torusRole, setTorusRole] = useState<TorusRole>("writer");
   const [duosmiumRoles, setDuosmiumRoles] = useState<DuosmiumRole[]>(ALL_DUOSMIUM_ROLES);
@@ -211,7 +194,7 @@ export function ExportModal({
   // TORUS and Duosmium always need one track; "All tracks" is custom-only.
   const effectiveTrackId = builtin?.usesTrack ? (trackId ?? tracks[0]?.id ?? null) : trackId;
 
-  const current = snapshot(draft, memberFilters, eventFilters);
+  const current = snapshot(draft, memberFilter, eventFilter);
   const dirty = isCustom && current !== baseline;
 
   // ---- Child modals, confirms and Escape ---------------------------------
@@ -247,8 +230,8 @@ export function ExportModal({
   // ---- Switching what's selected -----------------------------------------
   function selectBuiltin(id: BuiltinId) {
     guard(() => {
-      setMemberFilters(NO_MEMBER_FILTERS);
-      setEventFilters(NO_EVENT_FILTERS);
+      setMemberFilter(emptyFilter());
+      setEventFilter(emptyFilter());
       setSelection({ kind: "builtin", id });
       setPanel("config");
     });
@@ -257,11 +240,11 @@ export function ExportModal({
   function selectPreset(preset: ExportPreset) {
     guard(() => {
       const nextDraft = draftFromPreset(preset);
-      const nextMembers = membersFilterFromStored(preset.member_filters);
-      const nextEvents = eventsFilterFromStored(preset.event_filters);
+      const nextMembers = preset.member_filter;
+      const nextEvents = preset.event_filter;
       setDraft(nextDraft);
-      setMemberFilters(nextMembers);
-      setEventFilters(nextEvents);
+      setMemberFilter(nextMembers);
+      setEventFilter(nextEvents);
       setBaseline(snapshot(nextDraft, nextMembers, nextEvents));
       setSelection({ kind: "saved", id: preset.id });
       setPanel("config");
@@ -271,9 +254,9 @@ export function ExportModal({
   function startNew() {
     guard(() => {
       setDraft(EMPTY_DRAFT);
-      setMemberFilters(NO_MEMBER_FILTERS);
-      setEventFilters(NO_EVENT_FILTERS);
-      setBaseline(snapshot(EMPTY_DRAFT, NO_MEMBER_FILTERS, NO_EVENT_FILTERS));
+      setMemberFilter(emptyFilter());
+      setEventFilter(emptyFilter());
+      setBaseline(snapshot(EMPTY_DRAFT, emptyFilter(), emptyFilter()));
       setSelection({ kind: "new" });
       setPanel("config");
     });
@@ -317,8 +300,8 @@ export function ExportModal({
       shape: {
         ...draft,
         row_type: draft.row_type,
-        member_filters: membersFilterToStored(memberFilters),
-        event_filters: eventsFilterToStored(eventFilters),
+        member_filter: memberFilter,
+        event_filter: eventFilter,
       },
       trackId,
     };
@@ -333,8 +316,8 @@ export function ExportModal({
     draft,
     savedPreset,
     trackId,
-    memberFilters,
-    eventFilters,
+    memberFilter,
+    eventFilter,
   ]);
 
   // ---- The roster fetch --------------------------------------------------
@@ -343,17 +326,16 @@ export function ExportModal({
     () => (choice && (choice.kind !== "custom" || ctx) ? fieldsForChoice(choice, ctx) : null),
     [choice, ctx],
   );
-  const memberParams = useMemo(() => membersFilterParams(memberFilters), [memberFilters]);
-  const fetchKey = fields ? JSON.stringify([fields, memberParams]) : null;
+  const fetchKey = fields ? JSON.stringify([fields, memberFilter]) : null;
   const [members, setMembers] = useState<MembershipFull[] | null>(null);
   const [membersKey, setMembersKey] = useState<string | null>(null);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchKey already encodes fields and memberParams
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetchKey already encodes fields and memberFilter
   useEffect(() => {
     if (!fetchKey || !fields) return;
     let current = true;
     membersApi
-      .list(tournamentId, { fields, filters: memberParams })
+      .list(tournamentId, { fields, filter: memberFilter })
       .then((rows) => {
         if (current) {
           setMembers(rows);
@@ -366,7 +348,6 @@ export function ExportModal({
     return () => {
       current = false;
     };
-    // fetchKey already encodes fields and memberParams.
   }, [fetchKey, tournamentId]);
 
   const loadingMembers = fetchKey !== null && membersKey !== fetchKey;
@@ -378,10 +359,34 @@ export function ExportModal({
       choice,
       members,
       events,
-      eventIdsFor(choice, eventFilters, events, assignments),
+      eventIdsFor(choice, eventFilter, events, assignments),
       ctx,
     );
-  }, [choice, members, loadingMembers, ctx, eventFilters, events, assignments]);
+  }, [choice, members, loadingMembers, ctx, eventFilter, events, assignments]);
+
+  // ---- The filter modals -------------------------------------------------
+  const openMemberFilters = useCallback(() => {
+    setShowMemberFilters(true);
+    loadMemberFilterOptions();
+  }, [loadMemberFilterOptions]);
+  const memberFields = useMemo(
+    () =>
+      memberFilterFields(
+        memberFilterOptions,
+        roles.map((r) => ({ value: String(r.id), label: r.label })),
+      ),
+    [memberFilterOptions, roles],
+  );
+  // As eventIdsFor judges them: on the export's track, if it has one.
+  const eventFields = useMemo(
+    () =>
+      exportEventFields(
+        choice && choice.kind !== "email_list" ? choice.trackId : null,
+        events,
+        assignments,
+      ),
+    [choice, events, assignments],
+  );
 
   // ---- Output ------------------------------------------------------------
   function copy() {
@@ -420,8 +425,8 @@ export function ExportModal({
       sorts: draft.sorts,
       include_header: draft.include_header,
       output_type: draft.output_type,
-      member_filters: membersFilterToStored(memberFilters),
-      event_filters: eventsFilterToStored(eventFilters),
+      member_filter: memberFilter,
+      event_filter: eventFilter,
     };
     setSaving(true);
     try {
@@ -437,7 +442,7 @@ export function ExportModal({
       );
       const nextDraft = draftFromPreset(saved);
       setDraft(nextDraft);
-      setBaseline(snapshot(nextDraft, memberFilters, eventFilters));
+      setBaseline(snapshot(nextDraft, memberFilter, eventFilter));
       setSelection({ kind: "saved", id: saved.id });
       onPresetsChanged?.();
     } catch {
@@ -453,7 +458,6 @@ export function ExportModal({
   const exitRef = useExitAnimation<HTMLDivElement>();
   if (!mounted) return null;
 
-  const memberFilterActive = isFilterActive(memberFilters);
   const resolve = (key: string): ExportColumn | null =>
     ctx ? resolveExportColumn(key, ctx) : null;
   const columnGroups =
@@ -769,18 +773,18 @@ export function ExportModal({
                   >
                     <FilterButton
                       label="Member"
-                      active={memberFilterActive}
-                      onOpen={() => setShowMemberFilters(true)}
-                      onClear={() => setMemberFilters(NO_MEMBER_FILTERS)}
+                      count={countActiveConditions(memberFilter)}
+                      onOpen={openMemberFilters}
+                      onClear={() => setMemberFilter(emptyFilter())}
                     />
                     {/* Hidden, not just inert, where they don't apply — so a TD
                       never thinks they narrowed something they didn't. */}
                     {usesEventFilters && (
                       <FilterButton
                         label="Event"
-                        active={isEventsFilterActive(eventFilters)}
+                        count={countActiveConditions(eventFilter)}
                         onOpen={() => setShowEventFilters(true)}
-                        onClear={() => setEventFilters(NO_EVENT_FILTERS)}
+                        onClear={() => setEventFilter(emptyFilter())}
                       />
                     )}
                     {/* Built-ins have a fixed order; only a custom export sorts. */}
@@ -928,24 +932,22 @@ export function ExportModal({
         </div>
 
         {showMemberFilters && (
-          <MembersFilterModal
-            tournamentId={tournamentId}
-            roleOptions={roles.map((r) => ({ value: String(r.id), label: r.label }))}
-            filters={memberFilters}
-            onApply={setMemberFilters}
+          <FilterBuilderModal
+            title="Filter members"
+            fields={memberFields}
+            loading={memberFilterOptions === null}
+            loadError={memberFilterOptionsError}
+            filter={memberFilter}
+            onApply={setMemberFilter}
             onClose={() => setShowMemberFilters(false)}
           />
         )}
         {showEventFilters && (
-          <EventsFilterModal
-            divisionOptions={eventDivisionOptions(events)}
-            typeOptions={EVENT_TYPE_OPTIONS}
-            categoryOptions={eventCategoryOptions(events)}
-            trackOptions={tracks.length > 1 ? eventTrackOptions(events) : undefined}
-            buildingOptions={eventBuildingOptions(events)}
-            shiftOptions={eventShiftOptions(events)}
-            filters={eventFilters}
-            onApply={setEventFilters}
+          <FilterBuilderModal
+            title="Filter events"
+            fields={eventFields}
+            filter={eventFilter}
+            onApply={setEventFilter}
             onClose={() => setShowEventFilters(false)}
           />
         )}

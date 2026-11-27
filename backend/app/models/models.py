@@ -757,7 +757,7 @@ class TournamentMembership(Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     # This member's own UI config for the tournament's member-facing surfaces,
-    # keyed by surface — {"members_table": {"columns": [...], "filters": {...},
+    # keyed by surface — {"members_table": {"columns": [...], "filter": {...},
     # "sort": {...}}, "members_panel": {"hidden": ["track:3"], ...}}. Per
     # viewer, not per tournament: two coordinators looking at the same roster
     # each keep their own columns, filters and sort order instead of
@@ -971,6 +971,10 @@ class TournamentRole(Base):
 # Validated on write and read leniently: a deleted track or form field leaves
 # an inert column behind, never a 500.
 # ---------------------------------------------------------------------------
+EMPTY_FILTER: dict[str, Any] = {"op": "and", "conditions": []}
+_EMPTY_FILTER_SQL = text("""'{"op": "and", "conditions": []}'::json""")
+
+
 class TournamentExportPreset(Base):
     __tablename__ = "tournament_export_presets"
 
@@ -986,10 +990,14 @@ class TournamentExportPreset(Base):
     # Ordered [{"key": "email"}, {"key": "track_shifts:3", "mode": "times"}].
     # Objects, not strings, so a column can carry its own options.
     columns: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    # Roster query-param filters and the board's event filters, same shapes
-    # as display_config stores them.
-    member_filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
-    event_filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    # FilterGroups in the roster's and the events table's vocabularies, the
+    # same shape display_config stores under `filter`.
+    member_filter: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=lambda: dict(EMPTY_FILTER), server_default=_EMPTY_FILTER_SQL
+    )
+    event_filter: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=lambda: dict(EMPTY_FILTER), server_default=_EMPTY_FILTER_SQL
+    )
     # [{"field": <column key>, "direction": "asc" | "desc"}], in precedence order.
     sorts: Mapped[list[Any]] = mapped_column(JSON, default=list)
     include_header: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -1009,6 +1017,44 @@ class TournamentExportPreset(Base):
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", name="uq_tournament_export_preset_name"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# SavedFilter — a named filter one viewer saved on one table. Tournament
+# tables scope it to the tournament (its values are that tournament's ids);
+# site-wide tables like the admin users table leave tournament_id null.
+# ---------------------------------------------------------------------------
+class SavedFilter(Base):
+    __tablename__ = "saved_filters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    tournament_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), index=True
+    )
+    # The table's surface key without a tab suffix, so every tab shares them.
+    surface: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(100))
+    # A FilterGroup, the same shape display_config stores under `filter`.
+    filter: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "tournament_id",
+            "surface",
+            "name",
+            name="uq_saved_filter_name",
+            postgresql_nulls_not_distinct=True,
+        ),
     )
 
 

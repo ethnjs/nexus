@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.filter_conditions import validate_filter
 from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
     ASSIGNMENTS_BOARD,
@@ -16,6 +17,7 @@ from app.core.tournament.display_config import (
     is_known_sort_field,
     is_known_surface,
     known_filter_keys,
+    roster_check,
     section_field_ids,
 )
 from app.core.tournament.memberships import get_membership_by_user
@@ -140,12 +142,8 @@ def update_display_config(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Unknown column '{column}'",
                 )
-        for key in config.filters or {}:
-            if key not in known_filter_keys(surface):
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail=f"Unknown filter '{key}'",
-                )
+        if config.filter is not None:
+            validate_filter(config.filter, known_filter_keys(surface), roster_check(surface))
         # Both shapes, same vocabulary: `sort` is one key, `sorts` an
         # ordered chain of them. A surface stores whichever suits it.
         for rule in ([config.sort] if config.sort else []) + (config.sorts or []):

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AddSeasonEventsModal } from "@/components/admin/AddSeasonEventsModal";
+import { catalogFilterFields, seasonFilterFields } from "@/components/admin/adminEventFilterFields";
 import { CategoriesModal } from "@/components/admin/CategoriesModal";
 import { NewEventModal } from "@/components/admin/NewEventModal";
 import { SEASON_MASS_EDITOR_WIDTH, SeasonMassEditor } from "@/components/admin/SeasonMassEditor";
@@ -15,16 +16,8 @@ import { DivisionButtonGroup } from "@/components/ui/DivisionButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import {
-  emptyFilterState,
-  FilterModal,
-  type FilterOption,
-  type FilterSectionConfig,
-  type FilterState,
-  filterAllows,
-  isFilterActive,
-} from "@/components/ui/FilterModal";
 import { IconEvents, IconPlus, IconPresets, IconSearch, IconTrash } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -42,6 +35,7 @@ import {
   type EventCategory,
   type EventFormat,
   eventCategoriesApi,
+  type FilterGroup,
   type RelatedEvent,
   type SeasonEvent,
   type SeasonEventInput,
@@ -50,7 +44,9 @@ import {
   type TournamentDivision,
 } from "@/lib/api";
 import { EVENT_SORT_OPTIONS, EVENT_SORT_TIEBREAK, FORMAT_RANK } from "@/lib/eventSort";
-import { formatOptions, NO_FORMAT, YES_NO_OPTIONS, yesNo } from "@/lib/seasonDefaults";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
+import { formatOptions } from "@/lib/seasonDefaults";
 import { compareValues, type SortRule, sameSortRules, sortRows } from "@/lib/sorting";
 import { stickyHeader } from "@/lib/stickyHeader";
 import { currentSeasonYear, formatSeason } from "@/lib/tournamentDisplay";
@@ -64,9 +60,6 @@ import { useToast } from "@/lib/useToast";
 // decision — which set of events am I looking at — so they belong in one
 // control.
 const CATALOG = "all";
-
-const EVENT_FILTER_KEYS = ["category"] as const;
-type EventFilterKey = (typeof EVENT_FILTER_KEYS)[number];
 
 const EVENT_COLUMNS = [
   "minmax(260px, 2fr)", // name
@@ -128,9 +121,6 @@ const DIVISION_VARIANT: Record<TournamentDivision, "divisionA" | "divisionB" | "
   C: "divisionC",
 };
 
-const SEASON_FILTER_KEYS = ["category", "division", "format", "impound", "self_schedule"] as const;
-type SeasonFilterKey = (typeof SEASON_FILTER_KEYS)[number];
-
 /** Shared by every division of an event in a season; the backend keeps them in step. */
 type SeasonDetails = Pick<SeasonEventInput, "format" | "has_impound" | "has_self_schedule">;
 
@@ -183,35 +173,27 @@ function CatalogView({
 }) {
   const run = useActionToast();
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<FilterState<EventFilterKey>>(() =>
-    emptyFilterState(EVENT_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
   const [showFilters, setShowFilters] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CanonicalEvent | null>(null);
 
-  const categoryOptions: FilterOption[] = useMemo(
-    () => categories.map((c) => ({ value: c.name, label: c.name })),
-    [categories],
-  );
-
-  const sections: FilterSectionConfig<EventFilterKey>[] = [
-    { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
-  ];
+  const filterFields = useMemo(() => catalogFilterFields(categories), [categories]);
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
     return events
       .filter((e) => {
-        if (!filterAllows(filters.category, e.category.name)) return false;
+        if (!matchesFilter(e, filter, filterFieldMap)) return false;
         if (!query) return true;
         return (
           e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query)
         );
       })
       .sort((a, b) => compareValues(a.name, b.name) || a.id - b.id);
-  }, [events, search, filters]);
+  }, [events, search, filter, filterFieldMap]);
 
   /** Rethrows so EditableText keeps the field open with the server's message. */
   async function handleRename(id: number, name: string) {
@@ -238,7 +220,8 @@ function CatalogView({
     });
   }
 
-  const isFiltered = search.trim() !== "" || isFilterActive(filters);
+  const filterCount = countActiveConditions(filter);
+  const isFiltered = search.trim() !== "" || filterCount > 0;
 
   return (
     <>
@@ -260,9 +243,10 @@ function CatalogView({
           />
         </div>
         <FilterButton
-          active={isFilterActive(filters)}
+          count={filterCount}
           onOpen={() => setShowFilters(true)}
-          onClear={() => setFilters(emptyFilterState(EVENT_FILTER_KEYS))}
+          onClear={() => setFilter(emptyFilter())}
+          hotkey
         />
         {/* Pushed right so the filtering controls stay grouped on the left and
             the two "change the catalog" actions sit together. */}
@@ -358,11 +342,11 @@ function CatalogView({
       )}
 
       {showFilters && (
-        <FilterModal
+        <FilterBuilderModal
           title="Filter events"
-          sections={sections}
-          filters={filters}
-          onApply={setFilters}
+          fields={filterFields}
+          filter={filter}
+          onApply={setFilter}
           onClose={() => setShowFilters(false)}
         />
       )}
@@ -439,9 +423,7 @@ function SeasonView({
   const { setPanel, clearPanel } = useSetLayoutPanel();
   const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[] | null>(null);
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<FilterState<SeasonFilterKey>>(() =>
-    emptyFilterState(SEASON_FILTER_KEYS),
-  );
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
   const [showFilters, setShowFilters] = useState(false);
   const [sortRules, setSortRules] = useState<SortRule<SeasonSortField>[]>(DEFAULT_SEASON_SORT);
   const [showSort, setShowSort] = useState(false);
@@ -514,6 +496,16 @@ function SeasonView({
     }
     return map;
   }, [seasonEvents]);
+  const seasonFields = useMemo(
+    () =>
+      seasonFilterFields(
+        categories,
+        (e) => TOURNAMENT_DIVISIONS.filter((d) => byCell.get(`${e.id}:${d}`)?.is_active),
+        (e) => detailsRow.get(e.id),
+      ),
+    [categories, byCell, detailsRow],
+  );
+  const seasonFieldMap = useMemo(() => fieldMap(seasonFields), [seasonFields]);
 
   async function saveDetails(event: CanonicalEvent, patch: SeasonDetails) {
     const row = detailsRow.get(event.id);
@@ -544,18 +536,7 @@ function SeasonView({
     const query = search.trim().toLowerCase();
     const matching = events.filter((e) => {
       if (!ids.has(e.id)) return false;
-      if (!filterAllows(filters.category, e.category.name)) return false;
-      // Matches an event *active* in any of the picked divisions, which is
-      // what its badges show — filtering on mere presence would surface rows
-      // whose badge for that division isn't there.
-      if (filters.division.size > 0) {
-        const active = TOURNAMENT_DIVISIONS.filter((d) => byCell.get(`${e.id}:${d}`)?.is_active);
-        if (!active.some((d) => filters.division.has(d))) return false;
-      }
-      const details = detailsRow.get(e.id);
-      if (!filterAllows(filters.format, details?.format ?? NO_FORMAT)) return false;
-      if (!filterAllows(filters.impound, yesNo(details?.has_impound))) return false;
-      if (!filterAllows(filters.self_schedule, yesNo(details?.has_self_schedule))) return false;
+      if (!matchesFilter(e, filter, seasonFieldMap)) return false;
       if (!query) return true;
       return e.name.toLowerCase().includes(query) || e.category.name.toLowerCase().includes(query);
     });
@@ -583,30 +564,7 @@ function SeasonView({
       },
       (a, b) => compareValues(a.name, b.name) || a.id - b.id,
     );
-  }, [events, seasonEvents, search, filters, byCell, detailsRow, sortRules]);
-
-  const seasonSections: FilterSectionConfig<SeasonFilterKey>[] = [
-    {
-      key: "category",
-      title: "Category",
-      control: "checkbox",
-      options: categories.map((c) => ({ value: c.name, label: c.name })),
-    },
-    {
-      key: "division",
-      title: "Division",
-      control: "divisions",
-      options: TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: `Division ${d}` })),
-    },
-    {
-      key: "format",
-      title: "Format",
-      control: "buttons",
-      options: formatOptions(),
-    },
-    { key: "impound", title: "Impound", control: "buttons", options: YES_NO_OPTIONS },
-    { key: "self_schedule", title: "Self-schedule", control: "buttons", options: YES_NO_OPTIONS },
-  ];
+  }, [events, seasonEvents, search, filter, seasonFieldMap, byCell, detailsRow, sortRules]);
 
   async function toggle(event: CanonicalEvent, division: TournamentDivision, next: boolean) {
     const key = `${event.id}:${division}`;
@@ -731,9 +689,10 @@ function SeasonView({
           />
         </div>
         <FilterButton
-          active={isFilterActive(filters)}
+          count={countActiveConditions(filter)}
           onOpen={() => setShowFilters(true)}
-          onClear={() => setFilters(emptyFilterState(SEASON_FILTER_KEYS))}
+          onClear={() => setFilter(emptyFilter())}
+          hotkey
         />
         <SortButton
           active={!sameSortRules(sortRules, DEFAULT_SEASON_SORT)}
@@ -951,11 +910,11 @@ function SeasonView({
       )}
 
       {showFilters && (
-        <FilterModal
+        <FilterBuilderModal
           title="Filter season"
-          sections={seasonSections}
-          filters={filters}
-          onApply={setFilters}
+          fields={seasonFields}
+          filter={filter}
+          onApply={setFilter}
           onClose={() => setShowFilters(false)}
         />
       )}

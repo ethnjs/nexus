@@ -2,8 +2,10 @@
 
 import type { ReactNode } from "react";
 import { ChecklistPopover } from "@/components/ui/ChecklistPopover";
-import { SEARCHABLE_ABOVE } from "@/components/ui/FilterModal";
 import type { Role } from "@/lib/api";
+
+// Above this many roles the picker is faster to type into than to scroll.
+const SEARCHABLE_ABOVE = 8;
 
 /**
  * The tournament's roles as a checklist, with the ones already held ticked and
