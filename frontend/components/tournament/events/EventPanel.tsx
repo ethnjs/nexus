@@ -932,6 +932,7 @@ export function EventPanel({
                               <CreateShiftForm
                                 tournamentId={tournamentId}
                                 tracks={newShiftTracks}
+                                showTrack={!simple}
                                 onCreated={async (shift) => {
                                   await handleCreateAndAttachShift(shift);
                                   close();

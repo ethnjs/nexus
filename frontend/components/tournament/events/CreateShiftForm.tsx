@@ -24,6 +24,8 @@ interface CreateShiftFormProps {
    * question groups it under.
    */
   tracks: TournamentTrack[];
+  /** Off in a single-track tournament, where the only track is filled in. */
+  showTrack: boolean;
   /** Called once the shift exists on the backend; the caller owns attaching it and closing the popover once that succeeds. May throw/reject — the form shows the error inline and stays open. */
   onCreated: (shift: TournamentShift) => void | Promise<void>;
   onCancel: () => void;
@@ -32,6 +34,7 @@ interface CreateShiftFormProps {
 export function CreateShiftForm({
   tournamentId,
   tracks,
+  showTrack,
   onCreated,
   onCancel,
 }: CreateShiftFormProps) {
@@ -61,7 +64,7 @@ export function CreateShiftForm({
       return;
     }
     if (!label.trim() || !resolvedDay || !startTime || !endTime) {
-      setError("Track, day, label, start and end are all required.");
+      setError("Day, label, start and end are all required.");
       return;
     }
     if (endTime <= startTime) {
@@ -97,15 +100,17 @@ export function CreateShiftForm({
         onChange={(e) => setLabel(e.target.value)}
         placeholder="Morning"
       />
-      <TrackPicker
-        label="Track"
-        required
-        size="sm"
-        fullWidth
-        value={trackId}
-        onChange={pickTrack}
-        tracks={tracks}
-      />
+      {showTrack && (
+        <TrackPicker
+          label="Track"
+          required
+          size="sm"
+          fullWidth
+          value={trackId}
+          onChange={pickTrack}
+          tracks={tracks}
+        />
+      )}
       <TrackDayPicker
         label="Day"
         required
