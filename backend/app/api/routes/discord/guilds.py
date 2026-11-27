@@ -29,11 +29,11 @@ from app.core.discord.links import (
     NOT_IN_SERVER,
     InstallRefused,
     check_install,
+    install_unavailable,
     link_for_guild,
     link_for_track,
     mark_removed,
     notify_leave,
-    require_track_installable,
     user_label,
 )
 from app.core.discord.marks import mark_full
@@ -104,9 +104,11 @@ def start_install(
 ):
     """Redirects to Discord to add lobot to a server and link it to this track."""
     tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
     track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
-    require_track_installable(db, track)
+    unavailable = install_unavailable(db, tournament, track)
+    if unavailable is not None:
+        path = with_query(_settings_path(tournament_id), error=unavailable)
+        return RedirectResponse(frontend_redirect(path), status_code=302)
     # Adding lobot back after it was removed: Discord's picker is locked to the linked server.
     removed = link_for_track(db, track.id)
     pick = (

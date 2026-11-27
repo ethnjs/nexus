@@ -168,7 +168,8 @@ class TestStartInstall:
         td_tournament.is_archived = True
         db.commit()
         login(client, "td@test.com", "tdpass")
-        assert _start(client, td_tournament.id, track_id).status_code == 403
+        res = _start(client, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "start_tournament_archived"}
 
     def test_track_pending_deletion_is_refused(
         self, client, db, discord_on, td_user, td_tournament, track_id
@@ -176,14 +177,19 @@ class TestStartInstall:
         db.get(TournamentTrack, track_id).is_archived = True
         db.commit()
         login(client, "td@test.com", "tdpass")
-        assert _start(client, td_tournament.id, track_id).status_code == 409
+        res = _start(client, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "start_track_deleting"}
 
     def test_linked_track_is_refused(
         self, client, db, discord_on, td_user, td_tournament, track_id
     ):
         _add_link(db, td_tournament, track_id)
         login(client, "td@test.com", "tdpass")
-        assert _start(client, td_tournament.id, track_id).status_code == 409
+        res = _start(client, td_tournament.id, track_id)
+        assert res.status_code == 302
+        assert res.headers["location"].endswith(
+            f"/dashboard/tournaments/{td_tournament.id}/settings/discord?error=start_track_linked"
+        )
 
 
 class TestFinishInstall:

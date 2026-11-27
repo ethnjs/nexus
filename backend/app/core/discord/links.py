@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -37,12 +36,16 @@ def link_for_guild(db: Session, guild_id: int) -> DiscordGuildLink | None:
     return db.query(DiscordGuildLink).filter(DiscordGuildLink.guild_id == guild_id).first()
 
 
-def require_track_installable(db: Session, track: TournamentTrack) -> None:
+def install_unavailable(db: Session, tournament: Tournament, track: TournamentTrack) -> str | None:
+    """Why "Add to Discord" can't start for this track, as an error code for the settings page."""
+    if tournament.is_archived:
+        return "start_tournament_archived"
     if track.is_archived:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This track is being deleted")
+        return "start_track_deleting"
     link = link_for_track(db, track.id)
     if link is not None and link.bot_removed_at is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "This track already has a Discord server")
+        return "start_track_linked"
+    return None
 
 
 def mark_removed(db: Session, link: DiscordGuildLink) -> None:

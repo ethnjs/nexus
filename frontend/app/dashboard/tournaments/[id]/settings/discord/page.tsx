@@ -38,6 +38,9 @@ const INSTALL_ERRORS: Record<string, string> = {
   guild_linked_elsewhere: "That Discord server is already linked to another track.",
   track_linked_elsewhere: `This track is linked to a different Discord server. Unlink it first. ${LEFT}`,
   discord_cancelled: "Adding lobot was cancelled in Discord.",
+  start_tournament_archived: "This tournament is archived.",
+  start_track_deleting: "This track is being deleted.",
+  start_track_linked: "This track already has a Discord server.",
   discord_no_guild:
     "Discord didn't say which server lobot joined. If lobot was just removed from that server, wait a few seconds and try again.",
 };
