@@ -300,7 +300,12 @@ export function OptionList({
       // that land in a picker's list, and a press here is never an "outside"
       // press to any popover or panel this list sits in.
       data-select-panel="true"
-      onMouseDown={(e) => e.stopPropagation()}
+      // preventDefault too: a press on the padding or scrollbar would
+      // otherwise blur the field this list belongs to, which closes it.
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
       style={{
         position: "fixed",
         left: pos.left,

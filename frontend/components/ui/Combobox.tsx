@@ -220,8 +220,10 @@ export function Combobox<T>({
         // Picking a row keeps focus here, so a click after a pick gets no focus event to reopen on.
         onClick={() => !open && openList()}
         onKeyDown={handleKeyDown}
+        // Immediate: rows pick on mousedown without taking focus, and a
+        // lingering list would show over the next field the user clicks.
         onBlur={() => {
-          setTimeout(() => setOpen(false), 150);
+          setOpen(false);
           onBlur?.();
         }}
         error={displayedError}
