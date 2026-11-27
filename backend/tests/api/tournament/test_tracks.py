@@ -606,8 +606,10 @@ def test_deleting_down_to_one_track_renames_it_and_takes_its_events(
 ):
     login(client, "td@test.com", "tdpass")
     extra = _create_track(client, td_tournament.id, "Test Writing").json()
-    # Only on the track being deleted, so the delete leaves it on none.
-    stranded = _event_on(db, td_tournament, extra["id"], name="Codebusters")
+    # Taken off every track while there were two; an event on the deleted
+    # track would block the delete instead.
+    stranded = TournamentEvent(tournament_id=td_tournament.id, name="Codebusters", division="C")
+    db.add(stranded)
     db.commit()
     # Two tracks: names are the TD's own.
     assert {
