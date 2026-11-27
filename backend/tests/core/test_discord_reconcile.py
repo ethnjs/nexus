@@ -753,6 +753,33 @@ class TestDrain:
         db.commit()
         assert _marks(db) == [("member", 1)]
 
+    async def test_a_full_sync_keeps_marks_it_may_not_have_seen(self, db, built, scope):
+        mark_full(db, built.id)
+        before = utcnow() - timedelta(seconds=1)
+        retrying = DiscordSyncMark(
+            link_id=built.id,
+            kind="member",
+            discord_user_id=2,
+            created_at=before,
+            next_attempt_at=utcnow() + timedelta(minutes=5),
+        )
+        db.add(retrying)
+        db.commit()
+        claimed_at, by_link = claim_marks(db)
+        # Written before the claim, committed after it.
+        late = DiscordSyncMark(
+            link_id=built.id,
+            kind="member",
+            discord_user_id=1,
+            created_at=before,
+            next_attempt_at=before,
+        )
+        db.add(late)
+        db.commit()
+        await Syncer(scope).sync_link(built.id, by_link[built.id], claimed_at)
+        db.expire_all()
+        assert _marks(db) == [("member", 1)]
+
     async def test_skipped_links_drop_their_marks_without_calling_discord(
         self, db, built, scope, td_tournament, mock_discord_rest
     ):

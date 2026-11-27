@@ -198,10 +198,13 @@ class Syncer:
 
             def done(db: Session) -> None:
                 if "full" in kinds:
+                    # Claimed and retrying marks. A mark dated before the claim but still due
+                    # committed after it, possibly after the sync read NEXUS, so it stays.
                     ids = [
                         i
                         for (i,) in db.query(DiscordSyncMark.id).filter(
-                            DiscordSyncMark.link_id == link_id
+                            DiscordSyncMark.link_id == link_id,
+                            DiscordSyncMark.next_attempt_at > claimed_at,
                         )
                     ]
                 else:
