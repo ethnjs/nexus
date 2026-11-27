@@ -50,7 +50,7 @@ import {
   seasonDefaultsFor,
   useSeasonEvents,
 } from "@/lib/seasonDefaults";
-import { useTournament } from "@/lib/useTournament";
+import { isSimpleMode, useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 // Only fields shared and safe to blanket-apply across arbitrary events —
@@ -580,75 +580,82 @@ export function MassEventEditor({
           </SettingsRow>
         </SettingsSection>
 
-        <SettingsSection title="Tracks">
-          <div style={{ padding: "20px 0" }}>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <Popover
-                trigger={
-                  <Button type="button" variant="secondary" size="sm" fullWidth>
-                    <IconPlus size={12} /> Add track
-                  </Button>
-                }
-                items={addableTracks}
-                getKey={(t) => t.id}
-                renderLabel={(t) => t.name}
-                emptyMessage="No tracks exist yet in this tournament."
-                onSelect={addTrack}
-                width={280}
-              />
-              <Popover
-                trigger={
-                  <Button type="button" variant="secondary" size="sm" fullWidth>
-                    <IconMinus size={12} /> Remove track
-                  </Button>
-                }
-                items={attachedTracks}
-                getKey={(t) => t.id}
-                renderLabel={(t) => t.name}
-                emptyMessage="None of the selected events are on a track."
-                onSelect={removeTrack}
-                width={280}
-              />
-            </div>
-
-            {(pendingAddTracks.length > 0 || pendingRemoveTracks.length > 0) && (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}
-              >
-                {pendingAddTracks.map((t) => (
-                  <DiffRow
-                    key={t.id}
-                    label={<DiffBadge sign="+">{t.name}</DiffBadge>}
-                    onUndo={() =>
-                      setTracksToAdd((prev) => new Set([...prev].filter((id) => id !== t.id)))
-                    }
-                  />
-                ))}
-                {pendingRemoveTracks.map((t) => (
-                  <DiffRow
-                    key={t.id}
-                    label={<DiffBadge sign="-">{t.name}</DiffBadge>}
-                    onUndo={() =>
-                      setTracksToRemove((prev) => new Set([...prev].filter((id) => id !== t.id)))
-                    }
-                  />
-                ))}
+        {!isSimpleMode(addableTracks) && (
+          <SettingsSection title="Tracks">
+            <div style={{ padding: "20px 0" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <Popover
+                  trigger={
+                    <Button type="button" variant="secondary" size="sm" fullWidth>
+                      <IconPlus size={12} /> Add track
+                    </Button>
+                  }
+                  items={addableTracks}
+                  getKey={(t) => t.id}
+                  renderLabel={(t) => t.name}
+                  emptyMessage="No tracks exist yet in this tournament."
+                  onSelect={addTrack}
+                  width={280}
+                />
+                <Popover
+                  trigger={
+                    <Button type="button" variant="secondary" size="sm" fullWidth>
+                      <IconMinus size={12} /> Remove track
+                    </Button>
+                  }
+                  items={attachedTracks}
+                  getKey={(t) => t.id}
+                  renderLabel={(t) => t.name}
+                  emptyMessage="None of the selected events are on a track."
+                  onSelect={removeTrack}
+                  width={280}
+                />
               </div>
-            )}
 
-            <p
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "12px",
-                color: "var(--color-text-tertiary)",
-                marginTop: "8px",
-              }}
-            >
-              Removing a track leaves any shifts on it attached — detach those below if you meant to
-              drop them too.
-            </p>
-          </div>
-        </SettingsSection>
+              {(pendingAddTracks.length > 0 || pendingRemoveTracks.length > 0) && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    marginTop: "10px",
+                  }}
+                >
+                  {pendingAddTracks.map((t) => (
+                    <DiffRow
+                      key={t.id}
+                      label={<DiffBadge sign="+">{t.name}</DiffBadge>}
+                      onUndo={() =>
+                        setTracksToAdd((prev) => new Set([...prev].filter((id) => id !== t.id)))
+                      }
+                    />
+                  ))}
+                  {pendingRemoveTracks.map((t) => (
+                    <DiffRow
+                      key={t.id}
+                      label={<DiffBadge sign="-">{t.name}</DiffBadge>}
+                      onUndo={() =>
+                        setTracksToRemove((prev) => new Set([...prev].filter((id) => id !== t.id)))
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+
+              <p
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "12px",
+                  color: "var(--color-text-tertiary)",
+                  marginTop: "8px",
+                }}
+              >
+                Removing a track leaves any shifts on it attached — detach those below if you meant
+                to drop them too.
+              </p>
+            </div>
+          </SettingsSection>
+        )}
 
         <SettingsSection title="Shifts">
           <div style={{ padding: "20px 0" }}>
