@@ -268,16 +268,30 @@ function SentEmailsTable({ rows }: { rows: InviteEmailRecipient[] }) {
               <HoverCard
                 style={{ justifySelf: "center" }}
                 content={
-                  <p
-                    style={{
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "var(--color-text-primary)",
-                    }}
-                  >
-                    {row.label ?? "Invite"}
-                  </p>
+                  <>
+                    <p
+                      style={{
+                        fontFamily: "var(--font-sans)",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        color: "var(--color-text-primary)",
+                      }}
+                    >
+                      {row.label ?? "Invite"}
+                    </p>
+                    {row.invite_creator && (
+                      <p
+                        style={{
+                          fontFamily: "var(--font-sans)",
+                          fontSize: "12px",
+                          color: "var(--color-text-tertiary)",
+                          marginTop: "8px",
+                        }}
+                      >
+                        Invited by {personName(row.invite_creator)}
+                      </p>
+                    )}
+                  </>
                 }
               >
                 <Badge variant="default">{row.join_code}</Badge>

@@ -468,6 +468,7 @@ def test_list_invite_emails_one_row_per_recipient(
     assert rows[0]["label"] is None
     assert rows[0]["status"] == "sent"
     assert rows[0]["sender"]["user_id"] == td_user.id
+    assert rows[0]["invite_creator"]["user_id"] == td_user.id
 
 
 def test_list_invite_emails_volunteer_forbidden(client, td_user, other_tournament, db):

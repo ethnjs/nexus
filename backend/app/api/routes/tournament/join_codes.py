@@ -346,7 +346,15 @@ def list_invite_emails(
         .order_by(AuditLogEntry.created_at.desc(), AuditLogEntry.id.desc())
         .all()
     )
-    senders = resolve_person_refs(db, tournament_id, {e.actor_id for e in entries})
+    invite_ids = {e.target_id for e in entries if e.target_id is not None}
+    invite_creators = dict(
+        db.query(JoinCode.id, JoinCode.created_by).filter(JoinCode.id.in_(invite_ids)).all()
+    )
+    people = resolve_person_refs(
+        db,
+        tournament_id,
+        {e.actor_id for e in entries} | set(invite_creators.values()),
+    )
     return [
         InviteEmailRecipient(
             email=recipient["email"],
@@ -354,7 +362,12 @@ def list_invite_emails(
             join_code_id=entry.target_id,
             join_code=(entry.extra_data or {}).get("join_code"),
             label=(entry.extra_data or {}).get("label"),
-            sender=senders[entry.actor_id],
+            invite_creator=(
+                people[invite_creators[entry.target_id]]
+                if entry.target_id in invite_creators
+                else None
+            ),
+            sender=people[entry.actor_id],
             sender_name=entry.actor_name,
             sent_at=entry.created_at,
         )

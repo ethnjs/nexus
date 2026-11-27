@@ -66,6 +66,8 @@ class InviteEmailRecipient(BaseModel):
     join_code_id: int | None
     join_code: str | None
     label: str | None
+    # None once the invite row itself is gone.
+    invite_creator: PersonRefResponse | None
     sender: PersonRefResponse
     # Copied onto the audit entry, so it survives the sender's account being deleted.
     sender_name: str | None

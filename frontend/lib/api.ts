@@ -1666,6 +1666,7 @@ export interface InviteEmailRecipient {
   join_code_id: number | null;
   join_code: string | null;
   label: string | null;
+  invite_creator: PersonRef | null;
   sender: PersonRef;
   sender_name: string | null;
   sent_at: string;
