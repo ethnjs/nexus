@@ -48,6 +48,7 @@ export function NewFormModal({ tournamentId, onClose, onCreated }: NewFormModalP
         style={{ display: "flex", flexDirection: "column", gap: "14px" }}
       >
         <Input
+          font="sans"
           label="Name"
           required
           value={name}
