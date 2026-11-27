@@ -17,6 +17,8 @@ discord.VoiceClient.warn_nacl = False
 discord.VoiceClient.warn_dave = False
 
 MISSING_ACCESS = 50001
+FIRST_RETRY_SECONDS = 5.0
+MAX_RETRY_SECONDS = 300.0
 
 
 class GatewayEvents(Protocol):
@@ -106,8 +108,8 @@ def _role_targets(channel: discord.abc.GuildChannel) -> set[int]:
 
 
 class Gateway:
-    """Runs one client as a background task. A closed discord.py client can't be restarted, so
-    each start() builds a new one."""
+    """Runs the client as a background task, starting a new one after a failure until a stop():
+    a closed discord.py client can't be restarted."""
 
     def __init__(self, token: str, *, dev_guild_id: int | None, events: GatewayEvents) -> None:
         self._token = token
@@ -117,34 +119,42 @@ class Gateway:
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        self._client = _Client(dev_guild_id=self._dev_guild_id, events=self._events)
-        self._task = asyncio.create_task(self._run(self._client))
+        self._task = asyncio.create_task(self._run())
 
-    async def _run(self, client: _Client) -> None:
-        try:
-            await client.start(self._token)
-        except discord.LoginFailure:
-            log.error("Discord rejected DISCORD_BOT_TOKEN; the bot stays offline")
-        except discord.PrivilegedIntentsRequired:
-            log.error(
-                "Turn on the Server Members intent in the Discord developer portal; "
-                "the bot stays offline"
-            )
-        except Exception:
-            log.exception("The Discord gateway connection stopped")
+    async def _run(self) -> None:
+        delay = FIRST_RETRY_SECONDS
+        while True:
+            client = _Client(dev_guild_id=self._dev_guild_id, events=self._events)
+            self._client = client
+            try:
+                await client.start(self._token)
+                return
+            except discord.LoginFailure:
+                log.error("Discord rejected DISCORD_BOT_TOKEN; the bot stays offline")
+                return
+            except discord.PrivilegedIntentsRequired:
+                log.error(
+                    "Turn on the Server Members intent in the Discord developer portal; "
+                    "the bot stays offline"
+                )
+                return
+            except Exception:
+                # discord.py retries a dropped connection itself, but not a failed login.
+                log.exception("The Discord gateway stopped; starting again in %.0f s", delay)
+            finally:
+                await client.close()
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, MAX_RETRY_SECONDS)
 
     async def stop(self) -> None:
         if self._client is not None:
             # Closes with code 1000, which shows the bot offline right away.
             await self._client.close()
         if self._task is not None:
+            self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
         self._client = None
         self._task = None
-
-    async def wait_until_ready(self) -> None:
-        assert self._client is not None
-        await self._client.wait_until_ready()
 
     def guilds(self) -> list[tuple[int, datetime | None]]:
         """Every server the bot is in, with when the bot joined it."""

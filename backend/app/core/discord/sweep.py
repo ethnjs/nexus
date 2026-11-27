@@ -22,7 +22,6 @@ INSTALL_GRACE = timedelta(hours=1)
 
 
 class SweepGateway(Protocol):
-    async def wait_until_ready(self) -> None: ...
     def guilds(self) -> list[tuple[int, datetime | None]]: ...
     async def leave_guild(self, guild_id: int) -> None: ...
 
@@ -67,7 +66,8 @@ def _sweep_database() -> set[int]:
 
 
 async def run_sweep(gateway: SweepGateway) -> None:
-    await gateway.wait_until_ready()
+    # Never waits for the gateway: the marks need only the database, and a server the gateway
+    # hasn't listed yet is left until a later sweep.
     while True:
         try:
             linked = await asyncio.to_thread(_sweep_database)
