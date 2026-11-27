@@ -108,6 +108,11 @@ class FakeGuild:
                 return int(o["allow"]), int(o["deny"])
         return None
 
+    def ranked_ids(self) -> list[int]:
+        """Top to bottom as Discord ranks them, @everyone left out: ties go to the lower id."""
+        roles = (i for i in self.roles if i != self.id)
+        return sorted(roles, key=lambda i: (-int(self.roles[i]["position"]), i))
+
     def roles_top_down(self) -> list[str]:
         return [r["name"] for r in sorted(self.roles.values(), key=lambda r: -int(r["position"]))]
 
@@ -283,14 +288,18 @@ class FakeDiscord:
         return dict(role)
 
     async def move_roles(self, guild_id: int, positions: list[dict[str, Any]]) -> None:
+        """Discord takes any numbers, the bot's own role and roles above it included, as long as
+        nothing from the top down to the bot's role changes rank. Otherwise: "400 Bad Request
+        (error code: 50013): Missing Permissions"."""
         guild = self.guilds[guild_id]
-        bot_position = int(guild.roles[guild.bot_role]["position"])
-        for entry in positions:
-            # Discord: "400 Bad Request (error code: 50013): Missing Permissions".
-            if int(entry["id"]) == guild.bot_role or entry["position"] >= bot_position:
-                raise RuntimeError("Missing Permissions")
-        for entry in positions:
-            guild.roles[int(entry["id"])]["position"] = entry["position"]
+        before = guild.ranked_ids()
+        top = before[: before.index(guild.bot_role) + 1]
+        moved = {int(entry["id"]): entry["position"] for entry in positions}
+        after = sorted(before, key=lambda i: (-int(moved.get(i, guild.roles[i]["position"])), i))
+        if after[: len(top)] != top:
+            raise RuntimeError("Missing Permissions")
+        for role_id, position in moved.items():
+            guild.roles[role_id]["position"] = position
         self._write("move_roles", len(positions))
 
     async def create_channel(self, guild_id: int, **fields: Any) -> dict[str, Any]:

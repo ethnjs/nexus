@@ -691,17 +691,15 @@ class OrderRoles(Action):
         bot_index = next((i for i, r in enumerate(ranked) if r.id in ctx.live.bot_role_ids), None)
         if bot_index is None:
             return
+        top = [r.id for r in ranked[: bot_index + 1]]
         below = [r.id for r in ranked[bot_index + 1 :]]
         managed = [ctx.role_ids[k] for k in self.keys if ctx.role_ids.get(k) in below]
-        order = managed + [i for i in below if i not in managed]
-        if order == below:
+        order = top + managed + [i for i in below if i not in managed]
+        if order == [r.id for r in ranked]:
             return
-        # Discord refuses any position at or above the bot's own, and the bot can't move its own
-        # role, so in a server whose roles all share a position there's no room. The preview
-        # warned about that.
-        if ranked[bot_index].position <= len(order):
-            log.warning("No room below the bot's role to reorder roles in %s", ctx.guild_id)
-            return
+        # Every role, as the client sends on a drag. Discord accepts any numbers as long as
+        # nothing at or above the bot's highest role changes rank, even where a new server
+        # reports every role at one position.
         await ctx.rest.move_roles(
             ctx.guild_id,
             [{"id": str(i), "position": len(order) - n} for n, i in enumerate(order)],
@@ -1258,12 +1256,6 @@ class _Planner:
         if self.first or roles_added or roles_moved:
             group = UNDO if roles_moved and not self.first else None
             self.add(OrderRoles(group, "Role order", role_keys))
-            if roles_moved and not self._room_to_order_roles():
-                self.plan.warnings.append(
-                    "Discord hasn't given this server's roles distinct positions yet, so lobot "
-                    "can't put them in order. In Server Settings → Roles, drag any role up or "
-                    "down once, then run /reset again."
-                )
 
         category_keys = [c.key for c in self.s.layout.categories]
         channels = [*self.s.layout.fixed_channels, *self.s.layout.channels]
@@ -1286,14 +1278,6 @@ class _Planner:
         if self.first or channels_added or channels_moved:
             group = UNDO if channels_moved and not self.first else None
             self.add(OrderChannels(group, "Channel order", category_keys, channel_keys))
-
-    def _room_to_order_roles(self) -> bool:
-        ranked = self.live.ranked
-        bot_index = next((i for i, r in enumerate(ranked) if r.id in self.live.bot_role_ids), None)
-        if bot_index is None:
-            return False
-        below = len(ranked) - bot_index - 1 + self.role_creates
-        return ranked[bot_index].position > below
 
     @staticmethod
     def _out_of_order(

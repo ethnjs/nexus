@@ -684,8 +684,7 @@ class TestTiedPositions:
         assert ranked[-1] == "Verified"
         assert (await _preview(link, scope, reset=True)).empty
 
-    async def test_reset_that_cant_reorder_warns_instead_of_failing(self, db, link, tied, scope):
-        await _build(db, link, scope)
+    def _swap_runner_and_volunteer(self, db, link) -> None:
         roles = {
             r.label: r for r in db.query(TournamentRole).filter_by(tournament_id=link.tournament_id)
         }
@@ -694,11 +693,50 @@ class TestTiedPositions:
             roles["Runner"].rank,
         )
         db.commit()
+
+    def _names(self, guild) -> list[str]:
+        return [guild.roles[i]["name"] for i in guild.ranked_ids()]
+
+    async def test_a_reset_reorders_roles_that_share_a_position(self, db, link, tied, scope):
+        await _build(db, link, scope)
+        self._swap_runner_and_volunteer(db, link)
         plan = await _preview(link, scope, reset=True)
         assert "Role order" in dict(plan.groups())["Undo hand edits"]
-        assert any("drag any role" in w for w in plan.warnings)
+        assert plan.warnings == []
         assert await _build(db, link, scope, reset=True) is None
-        assert link.last_build_status == "succeeded"
+        names = self._names(tied)
+        assert names.index("Volunteer") < names.index("Runner")
+        assert len({int(r["position"]) for r in tied.roles.values()}) == len(tied.roles)
+
+    async def test_a_role_tied_above_lobot_keeps_its_place(self, db, link, tied, scope):
+        # Older than lobot's role, so it ranks above it at the same position.
+        tied.roles[1] = {
+            "id": "1",
+            "name": "Admin",
+            "permissions": "0",
+            "position": 1,
+            "managed": False,
+        }
+        await _build(db, link, scope)
+        self._swap_runner_and_volunteer(db, link)
+        assert (await _preview(link, scope, reset=True)).warnings == []
+        assert await _build(db, link, scope, reset=True) is None
+        names = self._names(tied)
+        assert names[:3] == ["Admin", "NEXUS", "Tournament Owner"]
+        assert names.index("Volunteer") < names.index("Runner")
+
+    async def test_discord_refuses_to_rerank_a_role_above_lobot(self, tied, mock_discord_rest):
+        tied.roles[1] = {
+            "id": "1",
+            "name": "Admin",
+            "permissions": "0",
+            "position": 1,
+            "managed": False,
+        }
+        with pytest.raises(RuntimeError, match="Missing Permissions"):
+            await mock_discord_rest.move_roles(
+                GUILD_ID, [{"id": str(tied.bot_role), "position": 2}]
+            )
 
 
 async def test_admin_roles_are_created_hoisted(db, link, guild, scope):
