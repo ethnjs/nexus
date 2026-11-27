@@ -221,6 +221,7 @@ def validate_track_status_options(
     field_key: str,
     question_type: str,
     config: dict,
+    require_required: bool = True,
 ) -> None:
     """Validate option-level track statuses for Track Status and opted-in
     Availability fields. Track mappings are tournament-only and catalog IDs
@@ -236,7 +237,8 @@ def validate_track_status_options(
         return
 
     _require(tournament_id is not None, "track status fields require a tournament-owned form")
-    if TRACK_STATUS_FIELD_KEY_PATTERN.match(field_key):
+    # An import form has no required questions: a row is stored whatever it leaves blank.
+    if require_required and TRACK_STATUS_FIELD_KEY_PATTERN.match(field_key):
         _require(config.get("required") is True, "track status fields must be required")
 
     track_ids = {assignment["id"] for assignment in assignments}
@@ -359,6 +361,7 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
                 field.field_key,
                 field.question_type,
                 normalized_config,
+                require_required=form.kind != "import",
             ),
             partial(
                 validate_branching_options,

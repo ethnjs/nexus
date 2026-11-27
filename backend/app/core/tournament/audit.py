@@ -31,6 +31,7 @@ TRACK_DELETE_PENDING = "track_delete_pending"
 TRACK_DELETE_CANCELLED = "track_delete_cancelled"
 TRACK_PURGED = "track_purged"
 FORM_RESPONSE_DELETED = "form_response_deleted"
+FORM_IMPORTED = "form_imported"
 DATA_EXPORTED = "data_exported"
 
 ALL_ACTIONS: list[str] = [
@@ -49,6 +50,7 @@ ALL_ACTIONS: list[str] = [
     TRACK_DELETE_CANCELLED,
     TRACK_PURGED,
     FORM_RESPONSE_DELETED,
+    FORM_IMPORTED,
     DATA_EXPORTED,
 ]
 

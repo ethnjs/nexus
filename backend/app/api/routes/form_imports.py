@@ -14,6 +14,7 @@ from app.core.form.import_sources import (
     read_upload,
     xlsx_sheet_names,
 )
+from app.core.form.imports import run_import
 from app.core.form.permissions import (
     require_form_editable,
     require_form_manage_access,
@@ -21,6 +22,7 @@ from app.core.form.permissions import (
 )
 from app.core.form.validation import FormFieldValidationError, validate_field_config
 from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament.audit import FORM_IMPORTED, log_action
 from app.core.tournament.permissions import (
     MANAGE_FORMS,
     MANAGE_MEMBERS,
@@ -32,6 +34,7 @@ from app.models.models import Form as FormModel
 from app.models.models import FormField, TournamentForm, User
 from app.schemas.form import FormRead
 from app.schemas.form_import import (
+    ImportReport,
     ImportSettingsRead,
     ImportSettingsUpdate,
     ImportSource,
@@ -307,3 +310,74 @@ def update_import_settings(
     form.import_source = ImportSource.model_validate(merged).model_dump(exclude_none=True)
     db.commit()
     return _settings(db, form)
+
+
+# ---------------------------------------------------------------------------
+# POST /forms/{form_id}/import/
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/forms/{form_id}/import/",
+    response_model=ImportReport,
+    responses={422: {"description": "The source can't be read, or lacks an identity column"}},
+)
+def import_rows(
+    dry_run: Annotated[bool, Form()] = True,
+    file: Annotated[UploadFile | None, File()] = None,
+    db: Session = Depends(get_db),
+    form: FormModel = Depends(require_import_form),
+    google: GoogleImportClient = Depends(get_google_client),
+    current_user: User = Depends(get_current_user),
+):
+    """Reads the source again (an upload is sent again as `file`) and imports each row as a
+    response from the person its email names. Existing active or invited accounts are attached,
+    and an email with no account gets an invited one. Re-importing overwrites the responses of
+    the people in the source and keeps everyone else's. With `dry_run` (the default) nothing is
+    saved, and the report says what the import would do."""
+    require_form_not_archived(form)
+    require_form_editable(form)
+    assert form.import_source is not None and form.tournament is not None
+    assert form.tournament_id is not None
+    source = ImportSource.model_validate(form.import_source)
+    try:
+        if source.kind == "upload":
+            if file is None:
+                raise ImportSourceError("Upload the file to import.")
+            filename = file.filename or ""
+            if not filename.lower().endswith(f".{source.file_type}"):
+                raise ImportSourceError(f"This import reads a .{source.file_type} file.")
+            table = read_upload(filename, read_upload_bytes(file), source.sheet_tab)
+        else:
+            assert source.spreadsheet_id is not None and source.sheet_tab is not None
+            table = google.sheet_table(source.spreadsheet_id, source.sheet_tab)
+        result = run_import(db, form, table, form.tournament.timezone, dry_run)
+    except ImportSourceError as e:
+        db.rollback()
+        raise _unprocessable(e) from e
+
+    if dry_run:
+        db.rollback()
+        return result.report
+
+    report = result.report
+    log_action(
+        db,
+        form.tournament_id,
+        current_user.id,
+        FORM_IMPORTED,
+        target_type="form",
+        extra_data={
+            "form_id": form.id,
+            "form_name": form.name,
+            "source": source.kind,
+            "rows": report.rows,
+            "imported": report.imported,
+            "invited_user_ids": result.invited_user_ids,
+            "membership_ids": result.membership_ids,
+            "response_ids": result.response_ids,
+            "overwritten_response_ids": result.overwritten_response_ids,
+        },
+    )
+    db.commit()
+    return report

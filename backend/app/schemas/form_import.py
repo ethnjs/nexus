@@ -97,3 +97,23 @@ class ImportSettingsUpdate(BaseModel):
     identity: ImportIdentity | None = None
     # A Google Sheet's tab, or an XLSX upload's sheet.
     sheet_tab: str | None = Field(default=None, min_length=1)
+
+
+class ImportProblem(BaseModel):
+    # The spreadsheet row number (the header is row 1), or None for a problem with the source.
+    row: int | None
+    email: str | None = None
+    message: str
+    # True when the whole row was left out, not just part of its answers.
+    skipped: bool = False
+
+
+class ImportReport(BaseModel):
+    dry_run: bool
+    rows: int
+    imported: int
+    invited_users: int
+    existing_users: int
+    new_memberships: int
+    overwritten_responses: int
+    problems: list[ImportProblem]

@@ -1,6 +1,8 @@
 """Route tests for app/api/routes/form_imports.py. Google is faked through get_google_client."""
 
 import io
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from openpyxl import Workbook
@@ -9,9 +11,19 @@ from app.api.routes.form_imports import get_google_client
 from app.core.form.import_sources import Cell, SourceTable
 from app.core.tournament.permissions import MANAGE_FORMS
 from app.main import app
-from app.models.models import Form, FormField, TournamentForm, TournamentRole
+from app.models.models import (
+    AuditLogEntry,
+    Form,
+    FormField,
+    FormResponse,
+    TournamentForm,
+    TournamentMembership,
+    TournamentMembershipTrackStatus,
+    TournamentRole,
+    User,
+)
 from app.services.google_import import GoogleForm, GoogleQuestion, SheetTab
-from tests.conftest import grant_role, login
+from tests.conftest import grant_role, login, primary_track_id
 
 CSV = (
     b"Timestamp,Email Address,Name,Shirt,Avail [Sat],Avail [Sun]\n"
@@ -238,3 +250,150 @@ def test_standard_forms_take_no_mapping(client, db, td_user, td_tournament):
         "import_mapping": {"shape": "column", "columns": [{"header": "Shirt"}]},
     }
     assert client.put(f"/forms/{form.id}/fields/", json={"fields": [entry]}).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /forms/{form_id}/import/
+# ---------------------------------------------------------------------------
+
+HEADER = "Timestamp,Email Address,Name,Shirt,Avail [Sat],Avail [Sun]\n"
+
+
+def _run(client, form, rows, dry_run=False, filename="people.csv"):
+    return client.post(
+        f"/forms/{form.id}/import/",
+        data={"dry_run": str(dry_run).lower()},
+        files={"file": (filename, (HEADER + "".join(rows)).encode(), "text/csv")},
+    )
+
+
+def _response(db, form, user):
+    return db.query(FormResponse).filter_by(form_id=form.id, user_id=user.id).one_or_none()
+
+
+def test_dry_run_reports_and_import_writes(client, db, td_user, td_tournament, other_user):
+    login(client, "td@test.com", "tdpass")
+    form, (shirt, grid) = _created(client, db, td_tournament)
+    rows = [
+        "11/13/2026 14:02:33,ann@example.com,Ann Lee,M,AM,PM\n",
+        "11/14/2026 09:00:00,other@test.com,Zed Q,Purple,PM,\n",
+    ]
+
+    preview = _run(client, form, rows, dry_run=True).json()
+    assert (preview["imported"], preview["invited_users"], preview["existing_users"]) == (2, 1, 1)
+    assert preview["new_memberships"] == 2
+    assert [(p["row"], p["skipped"]) for p in preview["problems"]] == [(3, False)]
+    db.expire_all()
+    assert db.query(User).filter_by(email="ann@example.com").first() is None
+
+    assert _run(client, form, rows).json() == {**preview, "dry_run": False}
+    db.expire_all()
+    ann = db.query(User).filter_by(email="ann@example.com").one()
+    assert (ann.status, ann.hashed_password, ann.first_name, ann.last_name) == (
+        "invited",
+        None,
+        "Ann",
+        "Lee",
+    )
+    assert db.query(TournamentMembership).filter_by(user_id=ann.id).one().source == "import"
+    response = _response(db, form, ann)
+    tz = ZoneInfo(td_tournament.timezone)
+    assert response.submitted_at == datetime(2026, 11, 13, 14, 2, 33, tzinfo=tz)
+    answers = {a.field_id: a.value for a in response.answers}
+    assert answers[shirt.id]["label"] == "M"
+    # The bad Shirt cell drops only that answer; the grid still imports.
+    other_answers = {a.field_id for a in _response(db, form, other_user).answers}
+    assert other_answers == {grid.id}
+    # An existing account is attached, never rewritten.
+    assert other_user.first_name != "Zed"
+    entry = db.query(AuditLogEntry).filter_by(action="form_imported").one()
+    assert entry.extra_data["invited_user_ids"] == [ann.id]
+
+
+def test_skipped_rows_and_duplicate_emails(client, db, td_user, td_tournament):
+    db.add(User(email="gone@example.com", status="deactivated"))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    form, (shirt, _) = _created(client, db, td_tournament)
+    report = _run(
+        client,
+        form,
+        [
+            "11/13/2026 10:00:00,ann@example.com,Ann Lee,M,,\n",
+            "11/12/2026 10:00:00,ann@example.com,Ann Lee,m,,\n",
+            ",not-an-email,Nobody,M,,\n",
+            ",gone@example.com,Gone,M,,\n",
+        ],
+    ).json()
+    assert report["imported"] == 1
+    skipped = sorted(p["row"] for p in report["problems"] if p["skipped"])
+    assert skipped == [3, 4, 5]
+    db.expire_all()
+    ann = db.query(User).filter_by(email="ann@example.com").one()
+    # The newer row wins though it comes first.
+    assert _response(db, form, ann).submitted_at.day == 13
+    assert db.query(User).filter_by(email="gone@example.com").one().status == "deactivated"
+
+
+def test_reimport_overwrites_people_in_the_file_and_keeps_the_rest(
+    client, db, td_user, td_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    form, (shirt, _) = _created(client, db, td_tournament)
+    _run(
+        client,
+        form,
+        [",ann@example.com,Ann Lee,M,,\n", ",bo@example.com,Bo Park,M,,\n"],
+    )
+    report = _run(client, form, [",ann@example.com,Ann Lee,,AM,\n"]).json()
+    assert (report["overwritten_responses"], report["new_memberships"]) == (1, 0)
+    db.expire_all()
+    ann = db.query(User).filter_by(email="ann@example.com").one()
+    bo = db.query(User).filter_by(email="bo@example.com").one()
+    assert shirt.id not in {a.field_id for a in _response(db, form, ann).answers}
+    assert {a.field_id for a in _response(db, form, bo).answers} == {shirt.id}
+
+
+def test_import_writes_through_track_status(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    form, (shirt, grid) = _created(client, db, td_tournament)
+    track_id = primary_track_id(db, td_tournament.id)
+    attending = {
+        "field_key": "track_status_attending",
+        "label": "Attending?",
+        "question_type": "single_select_radio",
+        "config": {
+            "required": False,
+            "options": [
+                {
+                    "option_id": "yes",
+                    "label": "Yes",
+                    "value": [{"id": track_id, "status": "confirmed"}],
+                }
+            ],
+        },
+        "import_mapping": {"shape": "column", "columns": [{"header": "Avail [Sun]"}]},
+    }
+    res = client.put(
+        f"/forms/{form.id}/fields/", json={"fields": [_entry(shirt), _entry(grid), attending]}
+    )
+    assert res.status_code == 200
+    _run(client, form, [",ann@example.com,Ann Lee,M,AM,Yes\n"])
+    db.expire_all()
+    ann = db.query(User).filter_by(email="ann@example.com").one()
+    membership = db.query(TournamentMembership).filter_by(user_id=ann.id).one()
+    status = db.query(TournamentMembershipTrackStatus).filter_by(membership_id=membership.id).one()
+    assert (status.track_id, status.status) == (track_id, "confirmed")
+
+
+def test_import_source_rejections(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    form, _ = _created(client, db, td_tournament)
+    assert client.post(f"/forms/{form.id}/import/", data={"dry_run": "true"}).status_code == 422
+    assert _run(client, form, [], filename="people.xlsx").status_code == 422
+    no_email = client.post(
+        f"/forms/{form.id}/import/",
+        files={"file": ("people.csv", b"Name,Shirt\nAnn,M\n", "text/csv")},
+    )
+    assert no_email.status_code == 422
+    assert "Email Address" in no_email.json()["detail"]

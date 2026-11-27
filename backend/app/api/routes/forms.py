@@ -30,13 +30,9 @@ from app.core.form.permissions import (
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
-    LUNCH_FIELD_KEY_PATTERN,
     FormFieldValidationError,
     availability_field_track_id,
     collect_active_field_errors,
-    option_shift_ids,
-    option_track_assignments,
-    track_status_enabled,
     validate_availability_options,
     validate_event_preference_options,
     validate_field_config,
@@ -47,16 +43,7 @@ from app.core.form.validation import (
     validate_track_status_options,
 )
 from app.core.form.write_through import (
-    event_preference_items_from_answer,
-    lunch_values_from_answer,
-    parse_availability_field_key,
-    parse_event_preference_field_key,
-    parse_lunch_field_key,
-    shift_ids_on_tracks,
-    sync_availability,
-    sync_event_preferences,
-    sync_lunch,
-    sync_track_statuses,
+    write_through_reserved_fields,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.audit import FORM_RESPONSE_DELETED, log_action
@@ -783,7 +770,12 @@ def bulk_update_fields(
             if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key):
                 validate_event_preference_options(db, form.tournament_id, question_type, normalized)
             validate_track_status_options(
-                db, form.tournament_id, field_key, question_type, normalized
+                db,
+                form.tournament_id,
+                field_key,
+                question_type,
+                normalized,
+                require_required=form.kind != "import",
             )
         except FormFieldValidationError as e:
             raise HTTPException(
@@ -1248,32 +1240,6 @@ def _write_through_reserved_fields(
     response: FormResponse,
     track_scope_field_ids: set[str] | None = None,
 ) -> None:
-    """Syncs `availability_{date}`/`lunch_{date}_{category}`/`track_status_*`/
-    `event_preference_{suffix}` answers into their structural tables —
-    tournament-owned forms only (see backend/docs/form-question-types-reference.md). Runs
-    over every active field, not just answered ones, so a reserved field left
-    blank clears any previously-synced rows rather than leaving them stale.
-
-    Availability write-through is scoped by *day*, not by form or field. Every
-    `availability_*` field across every form feeds one centralized
-    TournamentMembershipAvailability pool, so a submission may only touch the
-    shifts belonging to the days it actually asked about — otherwise answering
-    a Sunday form would wipe the Saturday availability a different form
-    collected. The days covered here are unioned and handed to
-    sync_availability as the boundary of what it may change; everything
-    outside is left alone.
-
-    Fields are unioned before that single call rather than synced one at a
-    time: two questions covering the same day would otherwise have the second
-    call's removal undo the first call's addition.
-
-    `track_scope_field_ids` limits which fields may write track statuses; None
-    means all of them. PATCH passes only the fields it patched, because track
-    status is last-write-wins with no idempotent diff to fall back on —
-    replaying an untouched field would re-fire a write the respondent didn't
-    make on this request. Availability deliberately has no such limit: its diff
-    is idempotent, and narrowing it would delete the shifts the unpatched
-    fields contribute."""
     membership = (
         db.query(TournamentMembership)
         .filter(
@@ -1288,78 +1254,9 @@ def _write_through_reserved_fields(
             detail="No membership found for a tournament-owned form response — require_form_view_access should have guaranteed one",
         )
 
-    availability_shift_ids: set[int] = set()
-    availability_track_ids: set[int] = set()
-    # track_id -> {"status", "field_id"}. Later fields overwrite earlier ones,
-    # so document order decides which question wins when two name the same
-    # track — hence _active_fields' order_by. Whether that intent actually
-    # lands is then up to sync_track_statuses' transition rule.
-    intended_track_statuses: dict[int, dict] = {}
-
-    for field in active_fields:
-        value = answers_by_field.get(field.id)
-        selected = value if isinstance(value, list) else ([value] if value else [])
-        options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
-
-        # Not an elif with the branches below: an availability field can opt
-        # into track statuses, so it feeds both this and the shift pool.
-        in_track_scope = track_scope_field_ids is None or field.id in track_scope_field_ids
-        if in_track_scope and track_status_enabled(field.field_key, field.config or {}):
-            for option_id in selected:
-                for assignment in option_track_assignments(options_by_id.get(option_id) or {}):
-                    intended_track_statuses[assignment["id"]] = {
-                        "status": assignment["status"],
-                        "field_id": field.id,
-                    }
-
-        if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
-            # `selected` is the chosen option_id(s) — each option groups real
-            # TournamentShift ids (see validate_availability_options); expand
-            # and flatten before diffing, so overlapping shifts across multiple
-            # selected options (within or across fields) naturally dedupe
-            # via set union. Read through option_shift_ids, not off `value`:
-            # once the option also carries track statuses the ids move under
-            # a `shift_ids` key.
-            for option_id in selected:
-                availability_shift_ids.update(option_shift_ids(options_by_id.get(option_id) or {}))
-            # The track is what this question governs, independent of which
-            # shifts its options currently name — so regrouping an option
-            # can't strand a shift the member should have lost.
-            availability_track_ids.add(parse_availability_field_key(field.field_key))
-            continue
-
-        if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
-            lunch_track_id, category = parse_lunch_field_key(field.field_key)
-            sync_lunch(
-                db,
-                membership.id,
-                lunch_track_id,
-                category,
-                lunch_values_from_answer(field, value),
-            )
-            continue
-
-        if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
-            # A track has exactly one preference question (unlike
-            # availability's shared per-track pool), so this can sync straight
-            # from this field's answer with no cross-field union needed.
-            sync_event_preferences(
-                db,
-                membership.id,
-                parse_event_preference_field_key(field.field_key),
-                event_preference_items_from_answer(field, value),
-            )
-            continue
-
-    if availability_track_ids:
-        sync_availability(
-            db,
-            membership.id,
-            availability_shift_ids,
-            shift_ids_on_tracks(db, membership.tournament_id, availability_track_ids),
-        )
-
-    sync_track_statuses(db, membership.id, intended_track_statuses, response.id)
+    write_through_reserved_fields(
+        db, membership, active_fields, answers_by_field, response, track_scope_field_ids
+    )
 
 
 # ---------------------------------------------------------------------------
