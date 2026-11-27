@@ -8,10 +8,11 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
 from app.core.discord.marks import mark_full
-from app.models.discord import DiscordGuildLink
+from app.models.discord import DiscordGuildLink, DiscordSyncMark
 from app.models.models import Tournament, TournamentTrack, utcnow
 
 log = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ def guilds_to_leave(
 
 def mark_all_full(db: Session) -> None:
     """A full mark for every built server the bot is in, outside archived tournaments and tracks
-    being deleted. Commits."""
+    being deleted. A server that already has one keeps it, with its backoff. Commits."""
     links = (
         db.query(DiscordGuildLink.id)
         .join(Tournament, Tournament.id == DiscordGuildLink.tournament_id)
@@ -49,6 +50,9 @@ def mark_all_full(db: Session) -> None:
             DiscordGuildLink.bot_removed_at.is_(None),
             Tournament.is_archived.is_(False),
             TournamentTrack.is_archived.is_(False),
+            ~exists().where(
+                DiscordSyncMark.link_id == DiscordGuildLink.id, DiscordSyncMark.kind == "full"
+            ),
         )
     )
     for (link_id,) in links:

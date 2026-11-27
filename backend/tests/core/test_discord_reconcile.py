@@ -1127,6 +1127,16 @@ class TestConcurrency:
         assert claim_build(db, link.id)
 
 
+async def test_the_sweep_keeps_a_failing_servers_backoff(db, built):
+    retry_at = utcnow() + timedelta(minutes=20)
+    db.add(DiscordSyncMark(link_id=built.id, kind="full", attempts=3, next_attempt_at=retry_at))
+    db.commit()
+    mark_all_full(db)
+    db.expire_all()
+    [mark] = db.query(DiscordSyncMark).all()
+    assert (mark.attempts, mark.next_attempt_at) == (3, retry_at)
+
+
 class TestGatewayEvents:
     async def test_member_join_marks_the_member(self, db, built):
         gateway_events.member_joined(db, GUILD_ID, 7001)
