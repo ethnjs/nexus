@@ -9,7 +9,13 @@ import pytest
 from sqlalchemy import event as sa_event
 
 from app.core.discord import events as gateway_events
-from app.core.discord.build import claim_build, claim_sync, release_sync, run_build
+from app.core.discord.build import (
+    claim_build,
+    claim_sync,
+    refresh_sync,
+    release_sync,
+    run_build,
+)
 from app.core.discord.drain import Syncer, claim_marks
 from app.core.discord.marks import mark_full, mark_member, mark_structure
 from app.core.discord.sweep import mark_all_full
@@ -755,7 +761,7 @@ class TestDrain:
         monkeypatch.setattr(build_module, "HEARTBEAT_SECONDS", 0)
         # The test's one session can't take a heartbeat's write from another thread mid-read.
         beat = threading.Event()
-        monkeypatch.setattr(build_module.Store, "sync_heartbeat", lambda self, link_id: beat.set())
+        monkeypatch.setattr(build_module, "refresh_sync", lambda db, claim: beat.set())
         real = mock_discord_rest.channels
 
         async def rate_limited(guild_id):
@@ -987,15 +993,35 @@ class TestConcurrency:
         assert mark.next_attempt_at > utcnow()
 
     async def test_only_one_sync_changes_a_server_at_a_time(self, db, link):
-        assert claim_sync(db, link.id)
+        claim = claim_sync(db, link.id)
+        assert claim is not None
         assert not claim_sync(db, link.id)
-        release_sync(db, link.id)
+        release_sync(db, claim)
         assert claim_sync(db, link.id)
 
         # A sync silent for over 2 minutes was interrupted, and its claim is taken over.
         link.sync_started_at = utcnow() - timedelta(minutes=3)
         db.commit()
         assert claim_sync(db, link.id)
+
+    async def test_a_sync_that_lost_its_claim_leaves_the_new_one_alone(self, db, link):
+        quiet = claim_sync(db, link.id)
+        assert quiet is not None
+        # Its last write was 3 minutes ago, so another sync takes over.
+        quiet.at = link.sync_started_at = utcnow() - timedelta(minutes=3)
+        db.commit()
+        current = claim_sync(db, link.id)
+        assert current is not None
+
+        refresh_sync(db, quiet)
+        release_sync(db, quiet)
+        db.refresh(link)
+        assert link.sync_started_at == current.at
+        assert not claim_build(db, link.id)
+
+        refresh_sync(db, current)
+        release_sync(db, current)
+        assert claim_build(db, link.id)
 
 
 class TestGatewayEvents:

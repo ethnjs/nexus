@@ -269,11 +269,17 @@ class Syncer:
 
     async def _sync_structure(self, link_id: int) -> set[str] | None:
         """The roles above the bot's, or None if a build started and holds the link."""
-        if not await self._in_db(lambda db: build.claim_sync(db, link_id)):
+        claim = await self._in_db(lambda db: build.claim_sync(db, link_id))
+        if claim is None:
             return None
+
+        def refresh(_link_id: int) -> None:
+            with self._scope() as db:
+                build.refresh_sync(db, claim)
+
         store = build.Store(self._scope)
         try:
-            async with build.kept_alive(link_id, store.sync_heartbeat):
+            async with build.kept_alive(link_id, refresh):
                 snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
                 rest = discord_rest.get_rest()
                 live = await build.fetch_live(rest, snapshot)
@@ -282,7 +288,7 @@ class Syncer:
                     await build.execute(plan, snapshot, live, rest, store)
                 return above_bot
         finally:
-            await self._in_db(lambda db: build.release_sync(db, link_id))
+            await self._in_db(lambda db: build.release_sync(db, claim))
 
     async def _sync_members(
         self, link_id: int, accounts: list[int | None], above_bot: set[str]

@@ -445,11 +445,6 @@ class Store:
         with self._link(link_id) as (_db, link):
             link.last_build_at = utcnow()
 
-    def sync_heartbeat(self, link_id: int) -> None:
-        """Shows the sync is still alive, so claim_build doesn't take it for dead."""
-        with self._link(link_id) as (_db, link):
-            link.sync_started_at = utcnow()
-
     def save_verify_message(self, link_id: int, message_id: int) -> None:
         with self._link(link_id) as (_db, link):
             link.verify_message_id = message_id
@@ -1626,7 +1621,16 @@ def claim_build(db: Session, link_id: int) -> bool:
     return claimed == 1
 
 
-def claim_sync(db: Session, link_id: int) -> bool:
+@dataclass
+class SyncClaim:
+    """A sync's hold on a link, known by the `sync_started_at` it last wrote. Once another sync
+    takes it over after it went quiet, refreshing or releasing it changes nothing."""
+
+    link_id: int
+    at: datetime
+
+
+def claim_sync(db: Session, link_id: int) -> SyncClaim | None:
     """Lets the sync change roles and channels unless a build, or another leader's sync during a
     leadership handover, holds the link. Without it, both could plan from the same snapshot and
     both create a missing role."""
@@ -1637,11 +1641,27 @@ def claim_sync(db: Session, link_id: int) -> bool:
         .update({"sync_started_at": now}, synchronize_session=False)
     )
     db.commit()
-    return claimed == 1
+    return SyncClaim(link_id, now) if claimed == 1 else None
 
 
-def release_sync(db: Session, link_id: int) -> None:
-    db.query(DiscordGuildLink).filter(DiscordGuildLink.id == link_id).update(
+def _held(claim: SyncClaim) -> ColumnElement[bool]:
+    return (DiscordGuildLink.id == claim.link_id) & (DiscordGuildLink.sync_started_at == claim.at)
+
+
+def refresh_sync(db: Session, claim: SyncClaim) -> None:
+    """Shows the sync is still alive, so claim_build doesn't take it for dead."""
+    now = utcnow()
+    if (
+        db.query(DiscordGuildLink)
+        .filter(_held(claim))
+        .update({"sync_started_at": now}, synchronize_session=False)
+    ):
+        claim.at = now
+    db.commit()
+
+
+def release_sync(db: Session, claim: SyncClaim) -> None:
+    db.query(DiscordGuildLink).filter(_held(claim)).update(
         {"sync_started_at": None}, synchronize_session=False
     )
     db.commit()

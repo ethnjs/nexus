@@ -266,8 +266,9 @@ class TestChecks:
         assert not claim_sync(db, link.id)
 
     async def test_a_released_sync_lets_a_build_start(self, db, link):
-        assert claim_sync(db, link.id)
-        release_sync(db, link.id)
+        claim = claim_sync(db, link.id)
+        assert claim is not None
+        release_sync(db, claim)
         assert claim_build(db, link.id)
 
     async def test_a_build_waiting_on_discord_keeps_its_claim(
