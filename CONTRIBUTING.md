@@ -98,7 +98,7 @@ Restart the backend after editing `.env`. Account linking then works at [localho
 **Tunnel the interactions endpoint.** Discord sends slash commands and button clicks straight to the backend, so it needs a public HTTPS URL that doesn't change between runs. Every ngrok account, free included, comes with one permanent [dev domain](https://ngrok.com/docs/gateway/domains) on `ngrok-free.dev`, and the agent uses it by default:
 
 ```bash
-ngrok http 8001
+ngrok http 8000
 ```
 
 With the backend running and Discord on, set the application's Interactions Endpoint URL to `https://<your-dev-domain>.ngrok-free.dev/discord/interactions/`, with the trailing slash. Discord checks the URL when you save, so the backend has to be up. OAuth redirects stay on `localhost:3000`, because they go through the browser.
