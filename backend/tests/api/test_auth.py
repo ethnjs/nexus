@@ -60,7 +60,7 @@ def volunteer_no_password(db):
 
 @pytest.fixture
 def invited_user(db):
-    """An admin-created user who hasn't completed account-setup yet."""
+    """An account made for someone, with no password yet."""
     user = User(
         email="invited@test.com",
         first_name="Invited",
@@ -658,8 +658,24 @@ class TestRegister:
         assert login(client, "new@test.com", "First@123").status_code == 401
         assert login(client, "new@test.com", "Second@123").status_code == 200
 
-    def test_register_passwordless_account_email_rejected(self, client, volunteer_no_password):
-        assert self._register(client, email="vol@test.com").status_code == 409
+    @pytest.mark.parametrize("fixture", ["invited_user", "volunteer_no_password"])
+    def test_code_claims_passwordless_account(self, client, db, request, fixture):
+        user = request.getfixturevalue(fixture)
+        first_name = user.first_name
+        token = self._register(client, email=user.email.upper()).json()["challenge_token"]
+        res = _verify(client, token, emailed_code())
+        assert res.status_code == 200
+        assert res.json()["id"] == user.id
+        db.refresh(user)
+        assert (user.status, user.email_verified, user.first_name) == ("active", True, first_name)
+        assert db.query(User).filter_by(email=user.email).count() == 1
+        client.post("/auth/logout/")
+        assert login(client, user.email, VALID_PASSWORD).status_code == 200
+
+    def test_register_deactivated_passwordless_account_rejected(self, client, db):
+        db.add(User(email="gone@test.com", role="user", status="deactivated"))
+        db.commit()
+        assert self._register(client, email="gone@test.com").status_code == 409
 
     def test_email_taken_before_code_entered(self, client, db):
         token = self._register(client).json()["challenge_token"]
@@ -1060,19 +1076,12 @@ class TestRequestPasswordReset:
         assert res.status_code == 200
         assert not mock_send_email.called
 
-    def test_invited_user_excluded_no_email_sent(self, client, invited_user, mock_send_email):
-        # Pending admin-invited accounts have no password yet — they should
-        # use account-setup, not password reset.
-        res = client.post("/auth/password/reset/request/", json={"email": "invited@test.com"})
+    @pytest.mark.parametrize("fixture", ["invited_user", "volunteer_no_password"])
+    def test_passwordless_user_sends_email(self, client, request, fixture, mock_send_email):
+        email = request.getfixturevalue(fixture).email
+        res = client.post("/auth/password/reset/request/", json={"email": email})
         assert res.status_code == 200
-        assert not mock_send_email.called
-
-    def test_no_password_user_excluded_no_email_sent(
-        self, client, volunteer_no_password, mock_send_email
-    ):
-        res = client.post("/auth/password/reset/request/", json={"email": "vol@test.com"})
-        assert res.status_code == 200
-        assert not mock_send_email.called
+        assert _sent(mock_send_email) == [(email, "Reset your password on NEXUS")]
 
     def test_deactivated_user_excluded_no_email_sent(self, client, inactive_user, mock_send_email):
         res = client.post("/auth/password/reset/request/", json={"email": "inactive@test.com"})
@@ -1105,6 +1114,28 @@ class TestConfirmPasswordReset:
         assert login(client, "td@test.com", "tdpass").status_code == 401
         assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
 
+    def test_reset_claims_invited_account(self, client, invited_user, db):
+        token = create_verification_token(db, invited_user.id, "password_reset")
+        res = client.post(
+            "/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD}
+        )
+        assert res.status_code == 200
+        db.refresh(invited_user)
+        assert (invited_user.status, invited_user.email_verified) == ("active", True)
+        assert login(client, "invited@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_reset_leaves_deactivated_passwordless_account_deactivated(self, client, db):
+        user = User(email="gone@test.com", role="user", status="deactivated")
+        db.add(user)
+        db.commit()
+        token = create_verification_token(db, user.id, "password_reset")
+        client.post(
+            "/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD}
+        )
+        db.refresh(user)
+        assert user.status == "deactivated"
+        assert user.hashed_password is not None
+
     def test_invalid_token_rejected(self, client):
         res = client.post(
             "/auth/password/reset/confirm/",
@@ -1131,50 +1162,6 @@ class TestConfirmPasswordReset:
             "/auth/password/reset/confirm/", json={"token": token, "new_password": "weak"}
         )
         assert res.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# POST /auth/account-setup/confirm/
-# ---------------------------------------------------------------------------
-
-
-class TestConfirmAccountSetup:
-    def test_valid_token_completes_setup(self, client, invited_user, db):
-        token = create_verification_token(db, invited_user.id, "account_setup")
-        res = client.post(
-            "/auth/account-setup/confirm/",
-            json={
-                "token": token,
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert res.status_code == 200
-        assert "access_token" in res.cookies
-        db.refresh(invited_user)
-        assert invited_user.status == "active"
-        assert invited_user.hashed_password is not None
-        assert invited_user.email_verified
-
-    def test_confirm_logs_user_in(self, client, invited_user, db):
-        token = create_verification_token(db, invited_user.id, "account_setup")
-        client.post(
-            "/auth/account-setup/confirm/",
-            json={
-                "token": token,
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert client.get("/users/me/").status_code == 200
-
-    def test_invalid_token_rejected(self, client):
-        res = client.post(
-            "/auth/account-setup/confirm/",
-            json={
-                "token": "garbage",
-                "password": VALID_PASSWORD,
-            },
-        )
-        assert res.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -1235,7 +1222,6 @@ class TestConsumeVerificationToken:
     def test_wrong_purpose_rejected_and_token_left_usable(self, td_user, db):
         token = create_verification_token(db, td_user.id, "password_reset")
         assert consume_verification_token(db, token, "email_change") is None
-        assert consume_verification_token(db, token, "account_setup") is None
         assert consume_verification_token(db, token, "password_reset") is not None
 
     def test_expired_token_rejected(self, td_user, db):
@@ -1331,14 +1317,6 @@ class TestOffEventLoop:
         )
         res = client.post(
             "/auth/email/revert/", json={"token": token, "new_password": VALID_PASSWORD}
-        )
-        assert res.status_code == 200
-        assert _ran_off_loop(loop_spy, "hash_password")
-
-    def test_confirm_account_setup(self, client, invited_user, db, loop_spy):
-        token = create_verification_token(db, invited_user.id, "account_setup")
-        res = client.post(
-            "/auth/account-setup/confirm/", json={"token": token, "password": VALID_PASSWORD}
         )
         assert res.status_code == 200
         assert _ran_off_loop(loop_spy, "hash_password")

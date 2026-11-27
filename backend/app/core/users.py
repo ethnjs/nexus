@@ -26,6 +26,27 @@ def check_if_email_exists(db: Session, email: str, exclude_user_id: int | None =
         )
 
 
+def find_claimable_user(db: Session, email: str) -> User | None:
+    """An account with no password that an emailed sign-up code or reset link takes over."""
+    return (
+        db.query(User)
+        .filter(
+            User.email == email.lower(),
+            User.hashed_password.is_(None),
+            User.status.in_(("active", "invited")),
+        )
+        .first()
+    )
+
+
+def claim_user(user: User, hashed_password: str) -> None:
+    """Sets the first password on an account with none, which proves the email address."""
+    user.hashed_password = hashed_password
+    user.email_verified = True
+    if user.status == "invited":
+        user.status = "active"
+
+
 def find_user_by_id(db: Session, id: int) -> User:
     user = db.query(User).filter(User.id == id).first()
     if not user:

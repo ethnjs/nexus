@@ -387,9 +387,6 @@ export const authApi = {
   confirmPasswordReset: (token: string, newPassword: string) =>
     api.post<void>("/auth/password/reset/confirm/", { token, new_password: newPassword }),
 
-  confirmAccountSetup: (token: string, password: string) =>
-    api.post<AdminUserSlim>("/auth/account-setup/confirm/", { token, password }),
-
   revertEmailChange: (token: string, newPassword: string) =>
     api.post<void>("/auth/email/revert/", { token, new_password: newPassword }),
 };

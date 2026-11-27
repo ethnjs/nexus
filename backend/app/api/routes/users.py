@@ -266,7 +266,6 @@ def admin_delete_user(
     status_code=status.HTTP_200_OK,
     response_model=MessageResponse,
     responses={
-        400: {"description": "User has no password to reset"},
         429: {"description": "Reset requested too recently"},
     },
 )
@@ -286,15 +285,6 @@ def admin_send_password_reset(
     of the reset-then-reactivate sequence.
     """
     user = find_user_by_id(db, user_id)
-
-    # No password means the account was never set up — that needs the
-    # account-setup invite, not a reset. Same exclusion the public route makes.
-    if not user.hashed_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User has no password set",
-        )
-
     token = create_verification_token(db, user.id, "password_reset")
     send_in_background(background_tasks, send_password_reset_email, user.email, token)
 

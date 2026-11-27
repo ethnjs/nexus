@@ -37,7 +37,6 @@ const ONBOARDING_EXEMPT_ROUTES = [
   "/forgot-password",
   "/reset-password",
   "/confirm-email-change",
-  "/account-setup",
   "/revert-email-change",
   "/onboarding",
   "/join",

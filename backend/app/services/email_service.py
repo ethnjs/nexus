@@ -402,24 +402,6 @@ async def send_password_changed_notice(to: str) -> None:
     )
 
 
-async def send_account_setup_email(to: str, token: str) -> None:
-    """No caller yet: kept for the dormant /auth/account-setup/confirm/ flow's future invite producer."""
-    await _send_email(
-        to,
-        _Email(
-            subject="You've been added to NEXUS",
-            heading="You've been added to NEXUS",
-            paragraphs=[
-                "An administrator created an account for you on NEXUS.",
-                "Set up your account to get started.",
-            ],
-            cta_label="Set up account",
-            cta_url=_cta_url("/account-setup", token),
-            footnote="This link expires in 7 days. If you weren't expecting this, contact support.",
-        ),
-    )
-
-
 # ---------------------------------------------------------------------------
 # Tournament invite
 # ---------------------------------------------------------------------------

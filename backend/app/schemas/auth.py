@@ -29,7 +29,7 @@ PASSWORD_ERROR_MSG: dict[str, str] = {
 def validate_password_strength(password: str) -> str:
     """
     Shared password strength check — used everywhere a password is set
-    (register, change, reset, account setup, email-change revert). Raises
+    (register, change, reset, email-change revert). Raises
     ValueError listing every failed check.
 
     Only printable ASCII (33-126) is allowed, so every class below is an
@@ -207,29 +207,6 @@ class EmailChangeRevertConfirm(BaseModel):
     @field_validator("new_password")
     @classmethod
     def check_new_password(cls, password: str) -> str:
-        return validate_password_strength(password)
-
-
-class AccountSetupConfirm(BaseModel):
-    """
-    POST /auth/account-setup/confirm — logged out.
-
-    Consumes an 'account_setup' token and completes the account: sets the
-    initial password. Mirrors sign-up's phase-1 fields, minus email (locked to
-    the invited address). Phone and any name correction are handled afterward
-    in the shared /onboarding step, same as regular sign-up users.
-
-    Dormant: nothing currently mints an 'account_setup' token, so no user can
-    reach status="invited". Kept for the invite flow's eventual producer — see
-    the note on User.status.
-    """
-
-    token: str
-    password: str
-
-    @field_validator("password")
-    @classmethod
-    def check_password(cls, password: str) -> str:
         return validate_password_strength(password)
 
 

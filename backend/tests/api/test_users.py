@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+import pytest
+
 from app.core.auth import consume_verification_token, create_verification_token, hash_password
 from app.models.models import (
     EmailCode,
@@ -625,22 +627,15 @@ class TestAdminTransferOwnerless:
 
 
 class TestAdminSendPasswordReset:
-    def test_admin_can_send_reset(self, client, admin_user, db, mock_send_email):
-        alice = _db_user(db)
+    @pytest.mark.parametrize("password", [hash_password("Password@1"), None])
+    def test_admin_can_send_reset(self, client, admin_user, db, mock_send_email, password):
+        alice = _db_user(db, hashed_password=password)
         login(client, "admin@test.com", "adminpass")
         res = client.post(f"/admin/users/{alice.id}/password-reset/")
         assert res.status_code == 200
         to, subject = mock_send_email.call_args.args[:2]
         assert to == alice.email
         assert subject == "Reset your password on NEXUS"
-
-    def test_user_without_password_rejected(self, client, admin_user, db, mock_send_email):
-        """No password means the account was never set up — that needs the
-        account-setup invite, not a reset."""
-        alice = _db_user(db, hashed_password=None)
-        login(client, "admin@test.com", "adminpass")
-        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 400
-        assert not mock_send_email.called
 
     def test_deactivated_user_allowed(self, client, admin_user, db, mock_send_email):
         """Status isn't a gate — reset-then-reactivate is a real sequence."""

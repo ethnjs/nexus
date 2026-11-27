@@ -40,11 +40,16 @@ from app.core.email_codes import (
     start_challenge,
     verify_challenge,
 )
-from app.core.users import check_if_email_exists, create_user, find_user_by_id
+from app.core.users import (
+    check_if_email_exists,
+    claim_user,
+    create_user,
+    find_claimable_user,
+    find_user_by_id,
+)
 from app.db.session import get_db
 from app.models.models import EmailCode, User, UserSession, VerificationToken
 from app.schemas.auth import (
-    AccountSetupConfirm,
     CodeChallengeResponse,
     CodeResendRequest,
     CodeVerifyRequest,
@@ -174,20 +179,27 @@ def verify_code(
     db: Session = Depends(get_db),
 ):
     """
-    Finishes a sign-in or sign-up with the emailed code. A sign-up creates the account here.
+    Finishes a sign-in or sign-up with the emailed code. A sign-up creates the account here, or
+    takes over an existing account that has no password yet, such as one a tournament imported.
     Sets an httpOnly session cookie on success and marks the email verified. Five wrong guesses
     at one code end the challenge.
     """
     row = verify_challenge(db, body.challenge_token, body.code, purposes=("sign_in", "sign_up"))
 
     if row.purpose == "sign_up":
-        check_if_email_exists(db, row.email)
-        try:
-            user = create_user(db, row.email, hashed_password=row.hashed_password)
-        except IntegrityError:
-            # Another pending sign-up for this email finished between the check and the insert.
-            db.rollback()
-            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
+        claimable = find_claimable_user(db, row.email)
+        if claimable is not None:
+            assert row.hashed_password is not None
+            claim_user(claimable, row.hashed_password)
+            user = claimable
+        else:
+            check_if_email_exists(db, row.email)
+            try:
+                user = create_user(db, row.email, hashed_password=row.hashed_password)
+            except IntegrityError:
+                # Another pending sign-up for this email finished between the check and the insert.
+                db.rollback()
+                raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
     else:
         found = db.query(User).filter(User.id == row.user_id, User.status == "active").first()
         if found is None:
@@ -267,7 +279,8 @@ def register(
     is created, verified, and signed in by POST /auth/code/verify/. Until then nothing reserves
     the email, and signing up again replaces the pending sign-up.
     """
-    check_if_email_exists(db, body.email)
+    if find_claimable_user(db, body.email) is None:
+        check_if_email_exists(db, body.email)
 
     email = body.email.lower()
     raw_token, code, row = start_challenge(
@@ -530,20 +543,19 @@ def request_password_reset(
 ):
     """
     Always returns the same generic response regardless of whether the
-    email matches an account — avoids account enumeration. Pending
-    admin-invited accounts (no password yet) are deliberately excluded:
-    they should use account-setup, not password reset.
+    email matches an account — avoids account enumeration. An invited account
+    or one with no password gets the same link, and setting a password claims it.
     """
     user = (
         db.query(User)
         .filter(
             User.email == body.email.lower(),
-            User.status == "active",
+            User.status.in_(("active", "invited")),
         )
         .first()
     )
 
-    if user and user.hashed_password:
+    if user:
         try:
             token = create_verification_token(db, user.id, "password_reset")
         except HTTPException as e:
@@ -575,64 +587,14 @@ def confirm_password_reset(
         raise HTTPException(400, "Invalid or expired token")
 
     user = find_user_by_id(db, token_row.user_id)
-    user.hashed_password = hash_password(body.new_password)
+    hashed = hash_password(body.new_password)
+    if user.hashed_password is None:
+        claim_user(user, hashed)
+    else:
+        user.hashed_password = hashed
     db.commit()
 
     send_in_background(background_tasks, send_password_changed_notice, user.email)
     revoke_all_sessions(db, user.id)
 
     return {"detail": "Password successfully reset"}
-
-
-# ---------------------------------------------------------------------------
-# Account setup
-#
-# Dormant: no producer currently mints an 'account_setup' token, so no user
-# can reach status="invited" and this route is unreachable. Kept for the
-# invite flow's eventual producer (a TD pre-provisioning staff) — note that a
-# producer also needs an invite-resend route, since a 7-day account_setup
-# token otherwise expires with no recovery path.
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/auth/account-setup/confirm/",
-    response_model=AdminUserSlimResponse,
-    status_code=status.HTTP_200_OK,
-    responses={
-        400: {"description": "Invalid or expired token"},
-    },
-)
-def confirm_account_setup(
-    body: AccountSetupConfirm,
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    """
-    Completes an invited account: sets the initial password and signs the user in. The emailed
-    link proves the address, so this also marks the email verified. Phone and any name
-    correction happen afterward in onboarding.
-    """
-    token_row = consume_verification_token(db, body.token, "account_setup")
-    if token_row is None:
-        raise HTTPException(400, "Invalid or expired token")
-
-    user = find_user_by_id(db, token_row.user_id)
-
-    user.hashed_password = hash_password(body.password)
-    user.status = "active"
-    user.email_verified = True
-    db.commit()
-    db.refresh(user)
-
-    raw_token = create_session(
-        db,
-        user.id,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=get_client_ip(request),
-        code_verified=True,
-    )
-    set_auth_cookie(response, raw_token)
-
-    return user

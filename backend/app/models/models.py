@@ -109,8 +109,8 @@ class EmailCode(Base):
 
 
 # ---------------------------------------------------------------------------
-# VerificationToken — backs email change and revert, password reset, and
-# account setup. Only the SHA-256 hash is stored (see
+# VerificationToken — backs email change and revert, and password reset.
+# Only the SHA-256 hash is stored (see
 # app/core/auth.py _hash_token); raw token is emailed. new_email is set for
 # email_change* purposes only (for revert, it's the address to revert TO).
 # ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ class VerificationToken(Base):
     token_hash: Mapped[str] = mapped_column(String(255), index=True, unique=True)
     purpose: Mapped[str] = mapped_column(
         String(32)
-    )  # "email_change", "password_reset", "account_setup", "email_change_revert"
+    )  # "email_change", "password_reset", "email_change_revert"
     new_email: Mapped[str | None] = mapped_column(
         String(255)
     )  # "email_change": new address. "email_change_revert": address to revert TO (old address).
@@ -302,6 +302,8 @@ class User(Base):
     # admin. Both are currently admin-only to clear, since there is no
     # logged-out reactivation path; the eventual intent is for deactivated to
     # become self-reversible, which is the only reason the split exists.
+    # "invited" is an account made for someone, with no password; signing up
+    # or resetting the password with its email claims it and makes it active.
     status: Mapped[str] = mapped_column(String(32), default="active")
 
     # if a student

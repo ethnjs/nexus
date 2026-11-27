@@ -231,16 +231,15 @@ def clear_auth_cookie(response: Response) -> None:
 
 # ---------------------------------------------------------------------------
 # Verification tokens
-# Backs email change and revert, password reset, and account setup. Raw token is emailed to the user; only its SHA-256 hash
+# Backs email change and revert, and password reset. Raw token is emailed to the user; only its SHA-256 hash
 # is ever persisted (VerificationToken.token_hash, via _hash_token).
 # ---------------------------------------------------------------------------
 
-Purpose = Literal["email_change", "password_reset", "account_setup", "email_change_revert"]
+Purpose = Literal["email_change", "password_reset", "email_change_revert"]
 
 TOKEN_TTL: dict[Purpose, timedelta] = {
     "email_change": timedelta(hours=24),
     "password_reset": timedelta(hours=1),
-    "account_setup": timedelta(days=7),  # admin invites sit longer before expiring
     "email_change_revert": timedelta(hours=24),
 }
 

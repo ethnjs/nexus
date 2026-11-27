@@ -8,12 +8,7 @@ const PROTECTED_PREFIXES = ["/dashboard", "/onboarding", "/forms"];
 const AUTH_ROUTES = ["/", "/sign-in", "/sign-up"];
 // A shared form link shows signed-out visitors a sign-in card instead.
 const SHARED_FORM_LINK = /^\/forms\/[^/]+\/view\/?$/;
-const TOKEN_REQUIRED_ROUTES = [
-  "/reset-password",
-  "/confirm-email-change",
-  "/account-setup",
-  "/revert-email-change",
-];
+const TOKEN_REQUIRED_ROUTES = ["/reset-password", "/confirm-email-change", "/revert-email-change"];
 
 function backendHeaders(request: NextRequest): HeadersInit {
   return {

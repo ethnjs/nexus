@@ -13,8 +13,7 @@ import {
 } from "@/lib/auth";
 
 interface CredentialsFormProps {
-  // Omit both to render a password-only form (e.g. account-setup, where the
-  // invited email isn't known client-side until after the token is submitted).
+  // Omit both to render a password-only form.
   email?: string;
   onEmailChange?: (value: string) => void;
   onSubmit: (password: string) => void | Promise<void>;
@@ -23,8 +22,6 @@ interface CredentialsFormProps {
   formError?: string;
 }
 
-// Shared email+password credentials form — sign-up's phase-1 fields,
-// reused as-is by account-setup (password only, no email prop passed).
 export function CredentialsForm({
   email,
   onEmailChange,
