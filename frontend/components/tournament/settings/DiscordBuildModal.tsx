@@ -120,8 +120,9 @@ export function DiscordBuildModal({
             {group.title} ({group.items.length})
           </h3>
           <ul style={listStyle}>
-            {group.items.map((item) => (
-              <li key={item}>{item}</li>
+            {group.items.map((item, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: labels repeat (one per staff role per channel), and the list never reorders.
+              <li key={i}>{item}</li>
             ))}
           </ul>
         </div>

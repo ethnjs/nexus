@@ -62,6 +62,8 @@ def _error_path(intent: str | None, code: str) -> str:
     return f"{base}?error={code}"
 
 
+# The Google routes are async, unlike the rest, because authlib's Starlette client is; their
+# database work runs in threads.
 @router.get("/auth/oauth/google/start/")
 async def google_start(
     request: Request,
