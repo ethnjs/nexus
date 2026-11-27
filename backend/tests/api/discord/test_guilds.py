@@ -316,6 +316,17 @@ class TestFinishInstall:
         assert _location_query(res) == {"error": "no_permission"}
         assert left == [GUILD_ID]
 
+    def test_refused_readd_leaves_the_server(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
+    ):
+        link = _add_link(db, td_tournament, track_id, bot_removed_at=utcnow())
+        login(client, "td@test.com", "tdpass")
+        res = _install(client, mock_discord_http, td_tournament.id, track_id)
+        assert _location_query(res) == {"error": "owner_not_linked"}
+        assert left == [GUILD_ID]
+        db.refresh(link)
+        assert link.bot_removed_at is not None
+
     def test_server_linked_to_another_track_is_refused_without_leaving(
         self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_http, left
     ):

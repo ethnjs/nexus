@@ -57,12 +57,15 @@ def mark_all_full(db: Session) -> None:
 
 
 def _sweep_database() -> set[int]:
-    """Marks every syncing server, and returns every linked guild id."""
+    """Marks every syncing server, and returns the guild ids of links lobot is still in."""
     from app.db.session import SessionLocal
 
     with SessionLocal() as db:
         mark_all_full(db)
-        return {guild_id for (guild_id,) in db.query(DiscordGuildLink.guild_id)}
+        query = db.query(DiscordGuildLink.guild_id).filter(
+            DiscordGuildLink.bot_removed_at.is_(None)
+        )
+        return {guild_id for (guild_id,) in query}
 
 
 async def run_sweep(gateway: SweepGateway) -> None:

@@ -46,17 +46,17 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 - **The server's owner must be a linked, active NEXUS user with `manage_tournament` in the tournament.** That matches what `manage_tournament` already means in Discord (Administrator). Anyone with `manage_discord` can run the install, and the server owner can differ from the installer. Ownership is checked only at install; later ownership changes don't unlink.
 - **The install is a full OAuth code grant** with scopes `bot applications.commands identify` and `permissions=8` (Administrator). `identify` is there only because Discord includes the `guild` object in the token response only in a full code grant. The callback trusts that `guild` (with its `owner_id`), never the redirect's `guild_id`, which Discord documents as a hint.
 - **Administrator** is needed because a bot can only set overwrite bits and role permissions it holds itself, and the build sets many. Role hierarchy still applies.
-- **A refused install makes lobot leave at once,** inside the callback, before redirecting, so a quick retry finds lobot gone (otherwise Discord's next token response can lack `guild`, since the bot wasn't added). A failed leave falls back to a `leave:<guild_id>` notification to the leader. lobot never leaves a server another track is linked to.
+- **A refused install makes lobot leave at once,** inside the callback, before redirecting, so a quick retry finds lobot gone (otherwise Discord's next token response can lack `guild`, since the bot wasn't added). A failed leave falls back to a `leave:<guild_id>` notification to the leader. lobot never leaves a server another track's live link holds; a refused re-add to a server whose link is marked removed leaves too.
 - **Installing builds nothing**; nothing syncs until the first build.
 - **Unlinking** deletes the link (and its managed-id maps and marks) and sends the leave notification in the same transaction. Roles and channels stay. Re-adding adopts them by name.
-- **Servers with no link:** the 15-minute sweep makes lobot leave any it joined over an hour ago. The hour covers installs in progress. A queued leave is skipped if the server was linked again meanwhile.
+- **Servers with no live link** (none, or one marked removed): the 15-minute sweep makes lobot leave any it joined over an hour ago. The hour covers installs in progress. A queued leave is skipped only if the server has a live link again.
 
 | State | Behavior |
 |---|---|
 | Tournament archived | No sync; builds refused; commands reply "This tournament is archived." Unarchiving writes a full mark. |
 | Track pending deletion | Same, "This track is being deleted." Cancelling the deletion writes a full mark. |
 | Track purged | The link cascades away; the sweep makes lobot leave. |
-| lobot removed from the server | `bot_removed_at` set, no sync; "Add to Discord" again clears it and writes a full mark. Its authorize URL passes `guild_id` and `disable_guild_select=true`, so Discord's picker offers only the linked server. A sync, build, or preview that gets Unknown Guild (10004) sets it too (`mark_removed`), which catches a removal or deleted server the gateway missed while it was down. |
+| lobot removed from the server | `bot_removed_at` set, no sync; builds refused; commands reply "lobot was removed from this server." "Add to Discord" again clears it and writes a full mark. Its authorize URL passes `guild_id` and `disable_guild_select=true`, so Discord's picker offers only the linked server. A sync, build, or preview that gets Unknown Guild (10004) sets it too (`mark_removed`), which catches a removal or deleted server the gateway missed while it was down. |
 
 ## Permissions and tiers
 

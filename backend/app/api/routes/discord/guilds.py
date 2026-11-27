@@ -147,6 +147,13 @@ def _leave_now(db: Session, guild_id: int) -> None:
         db.commit()
 
 
+def _leave_unless_linked(db: Session, guild_id: int) -> None:
+    """Leaves unless a link that lobot is still in owns the server, as another track's can."""
+    link = link_for_guild(db, guild_id)
+    if link is None or link.bot_removed_at is not None:
+        _leave_now(db, guild_id)
+
+
 @router.get("/discord/install/callback/", include_in_schema=False)
 def finish_install(
     request: Request,
@@ -195,8 +202,7 @@ def finish_install(
     tournament = db.get(Tournament, tournament_id)
     if tournament is None:
         log.info("Discord install finished for a deleted tournament; leaving server %s", guild_id)
-        if link_for_guild(db, guild_id) is None:
-            _leave_now(db, guild_id)
+        _leave_unless_linked(db, guild_id)
         return RedirectResponse(frontend_redirect("/dashboard"), status_code=302)
     track = db.get(TournamentTrack, pending["track_id"])
     if track is not None and track.tournament_id != tournament_id:
@@ -207,9 +213,7 @@ def finish_install(
         )
     except InstallRefused as refused:
         log.info("Discord install refused (%s) for server %s", refused.code, guild_id)
-        # Never leave a server another track is linked to.
-        if link_for_guild(db, guild_id) is None:
-            _leave_now(db, guild_id)
+        _leave_unless_linked(db, guild_id)
         params = {"error": refused.code}
         if refused.owner:
             params["owner"] = refused.owner

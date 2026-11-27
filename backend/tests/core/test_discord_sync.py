@@ -177,3 +177,21 @@ async def test_a_stale_leave_spares_a_server_linked_again(db, td_tournament):
     await drain._handle("leave:555")
     await drain._handle("leave:556")
     assert gateway.left == [556]
+
+
+async def test_a_leave_queued_after_a_refused_readd_goes_ahead(db, td_tournament):
+    db.add(
+        DiscordGuildLink(
+            tournament_id=td_tournament.id,
+            track_id=primary_track_id(db, td_tournament.id),
+            guild_id=555,
+            bot_removed_at=utcnow(),
+        )
+    )
+    db.commit()
+    gateway = FakeGateway()
+    drain = Drain(
+        TEST_DATABASE_URL, gateway, syncer=IdleSyncer(), session_scope=lambda: nullcontext(db)
+    )
+    await drain._handle("leave:555")
+    assert gateway.left == [555]

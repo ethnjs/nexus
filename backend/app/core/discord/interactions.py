@@ -84,6 +84,8 @@ def _unusable(link: DiscordGuildLink | None) -> str | None:
     """Why commands can't run in this server, if they can't."""
     if link is None:
         return "This server isn't linked to a NEXUS track."
+    if link.bot_removed_at is not None:
+        return "lobot was removed from this server. Add it back from NEXUS first."
     if link.tournament.is_archived:
         return "This tournament is archived."
     if link.track.is_archived:

@@ -168,6 +168,13 @@ class TestServerState:
         db.commit()
         assert _content(_post(client, _command("whoami"))) == "This track is being deleted."
 
+    def test_server_lobot_was_removed_from(self, client, db, discord_on, link):
+        link.bot_removed_at = utcnow()
+        db.commit()
+        assert _content(_post(client, _command("setup"))) == (
+            "lobot was removed from this server. Add it back from NEXUS first."
+        )
+
 
 class TestLink:
     def test_replies_with_a_link_button(self, client, discord_on, link):

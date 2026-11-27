@@ -464,12 +464,14 @@ class Drain:
         if payload.startswith("leave:"):
             guild_id = int(payload.removeprefix("leave:"))
             # A server linked again since the leave was queued keeps the bot.
-            if not await asyncio.to_thread(self._is_linked, guild_id):
+            if not await asyncio.to_thread(self._is_live, guild_id):
                 await self._gateway.leave_guild(guild_id)
 
-    def _is_linked(self, guild_id: int) -> bool:
+    def _is_live(self, guild_id: int) -> bool:
+        """Whether a link lobot is still in holds the server: one marked removed doesn't."""
         with self._scope() as db:
-            return link_for_guild(db, guild_id) is not None
+            link = link_for_guild(db, guild_id)
+            return link is not None and link.bot_removed_at is None
 
     def _listen(self) -> psycopg.Connection:
         # Keepalives notice a connection dropped without an error, which LISTEN alone never would.
