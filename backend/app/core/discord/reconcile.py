@@ -144,20 +144,20 @@ class _SyncPlanner:
                     )
                 continue
             self.roles[spec.key] = role.id
-            if role.name != spec.name:
-                if self.live.below_bot(role.id):
-                    self.add(
-                        SetUpRole(
-                            None,
-                            f"{spec.name}: renamed from {role.name}",
-                            spec.key,
-                            role.id,
-                            {"name": spec.name},
-                            self.tiers.get(spec.key),
-                        )
+            if not self.live.below_bot(role.id):
+                # Reported even with nothing to change, so the warning shows while it's up there.
+                self.above_bot.add(role.name)
+            elif role.name != spec.name:
+                self.add(
+                    SetUpRole(
+                        None,
+                        f"{spec.name}: renamed from {role.name}",
+                        spec.key,
+                        role.id,
+                        {"name": spec.name},
+                        self.tiers.get(spec.key),
                     )
-                else:
-                    self.above_bot.add(role.name)
+                )
         for key, role_id in self.s.role_ids.items():
             if key in layout_keys:
                 continue

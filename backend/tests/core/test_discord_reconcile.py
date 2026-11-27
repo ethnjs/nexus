@@ -215,6 +215,28 @@ class TestMembers:
         assert "Runner" in guild.member_role_names(6008)
         assert built.last_sync_warning is None
 
+    async def test_a_managed_role_above_the_bot_is_reported_with_nothing_to_change(
+        self, db, built, guild, scope, mock_discord_rest
+    ):
+        top = max(int(r["position"]) for r in guild.roles.values())
+        guild.role("Runner")["position"] = top + 1
+        mark_structure(db, built.id)
+        db.commit()
+        mock_discord_rest.writes.clear()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_warning == (
+            "Move lobot's role above Runner. lobot can't give or remove it."
+        )
+        assert mock_discord_rest.writes == []
+
+        guild.role("Runner")["position"] = 1
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_warning is None
+
     async def test_a_full_sync_with_nothing_out_of_place_writes_nothing(
         self, db, built, scope, mock_discord_rest
     ):
