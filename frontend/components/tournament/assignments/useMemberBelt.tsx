@@ -13,19 +13,14 @@ import {
   NO_MEMBER_FIELDS,
 } from "@/components/tournament/assignments/MemberDisplayModal";
 import {
-  defaultMemberFiltersForTab,
-  MEMBERS_FILTER_KEYS,
-  MembersFilterModal,
-  type MembersFilterState,
-  membersFilterFromStored,
-  membersFilterParams,
-  membersFilterToStored,
-} from "@/components/tournament/members/MembersFilterModal";
+  defaultMemberFilterForTab,
+  memberFilterFields,
+} from "@/components/tournament/members/memberFilterFields";
 import { Button } from "@/components/ui/Button";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
-import { emptyFilterState, isFilterActive } from "@/components/ui/FilterModal";
 import { IconSearch, IconUser } from "@/components/ui/Icons";
 import { Input } from "@/components/ui/Input";
 import { SortButton } from "@/components/ui/SortButton";
@@ -35,6 +30,7 @@ import {
   type DisplayConfig,
   type DisplayConfigCatalog,
   displayConfigApi,
+  type FilterGroup,
   type FilterOptionGroup,
   type MembershipFull,
   membersApi,
@@ -45,6 +41,9 @@ import {
 } from "@/lib/api";
 import { fullName } from "@/lib/assignments/board";
 import { persistDisplayConfigSurface } from "@/lib/displayConfig";
+import { countActiveConditions, emptyFilter } from "@/lib/filters/model";
+import { useMemberFilterOptions } from "@/lib/filters/useMemberFilterOptions";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { FIELD_KEY_PREFIX } from "@/lib/memberColumnKeys";
 import {
   isMemberSortField,
@@ -103,7 +102,14 @@ export function useMemberBelt({
   selectMode,
 }: MemberBeltOptions) {
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<MembersFilterState>(emptyFilterState(MEMBERS_FILTER_KEYS));
+  const [filter, setFilter] = useState<FilterGroup>(emptyFilter);
+  const {
+    options: filterOptions,
+    error: filterOptionsError,
+    load: loadFilterOptions,
+  } = useMemberFilterOptions(tournamentId);
+  // Named filters are shared by every tab; the applied one is per tab.
+  const savedFilters = useSavedFilters(surfaceBase, tournamentId);
   const [display, setDisplay] = useState<MemberDisplayState>(DEFAULT_MEMBER_DISPLAY);
   const [sort, setSort] = useState<SortRule<MemberSortField>[]>(DEFAULT_BELT_SORT);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -125,10 +131,7 @@ export function useMemberBelt({
     [trackIds, activeTrackId],
   );
   const filterDefaults = useMemo(
-    () =>
-      filterToTab
-        ? defaultMemberFiltersForTab(trackIds, activeTrackId)
-        : emptyFilterState(MEMBERS_FILTER_KEYS),
+    () => (filterToTab ? defaultMemberFilterForTab(trackIds, activeTrackId) : emptyFilter()),
     [filterToTab, trackIds, activeTrackId],
   );
   const [savedConfig, setSavedConfig] = useState<DisplayConfig | null>(null);
@@ -170,9 +173,9 @@ export function useMemberBelt({
     setAppliedFrom(appliedInputs);
     const card = savedConfig[surface];
     // Nothing saved for this tab yet: the tab decides what the belt narrows
-    // to. A saved `{}` is a real state (every chip cleared), so only an
-    // absent one falls back.
-    setFilters(card?.filters ? membersFilterFromStored(card.filters) : filterDefaults);
+    // to. A saved empty filter is a real state (every row cleared), so only
+    // an absent one falls back.
+    setFilter(card?.filter ?? filterDefaults);
     setDisplay(
       Array.isArray(card?.hidden) ? memberDisplayFromHidden(card.hidden) : displayDefaults,
     );
@@ -199,12 +202,25 @@ export function useMemberBelt({
     [tournamentId, surface, savedConfig, display],
   );
 
-  const applyFilters = useCallback(
-    (next: MembersFilterState) => {
-      setFilters(next);
-      persist({ filters: membersFilterToStored(next) });
+  const applyFilter = useCallback(
+    (next: FilterGroup) => {
+      setFilter(next);
+      persist({ filter: next });
     },
     [persist],
+  );
+
+  const openFilterModal = useCallback(() => {
+    setShowFilterModal(true);
+    loadFilterOptions();
+  }, [loadFilterOptions]);
+  const filterFields = useMemo(
+    () =>
+      memberFilterFields(
+        filterOptions,
+        roleCatalog.map((r) => ({ value: String(r.id), label: r.label })),
+      ),
+    [filterOptions, roleCatalog],
   );
   const applyDisplay = useCallback(
     (next: MemberDisplayState) => {
@@ -238,23 +254,23 @@ export function useMemberBelt({
 
   // Against nothing, not the tab's defaults: those are filters and fields
   // too, and the toolbar's × is the one-press way to drop them.
-  const filterActive = isFilterActive(filters);
+  const filterCount = countActiveConditions(filter);
+  const filterActive = filterCount > 0;
   const displayActive = anyMemberFieldShown(display);
   const sortActive = !sameSortRules(sort, DEFAULT_BELT_SORT);
 
   // Members matching the filters, from the same server filter the members
   // page uses. Re-read after writes so the assigned filter follows a drag.
   // null = no filters set, so everyone passes.
-  const filtersSet = enabled && Object.keys(membersFilterParams(filters)).length > 0;
+  const filtersSet = enabled && filterActive;
   const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null);
   // Dropped as filters clear, so setting new ones doesn't briefly show the old matches.
   if (!filtersSet && filterMatchIds !== null) setFilterMatchIds(null);
   useEffect(() => {
-    const params = membersFilterParams(filters);
-    if (!enabled || Object.keys(params).length === 0) return;
+    if (!enabled || countActiveConditions(filter) === 0) return;
     let current = true;
     membersApi
-      .list(tournamentId, { fields: [], filters: params })
+      .list(tournamentId, { fields: [], filter })
       .then((data) => {
         if (current) setFilterMatchIds(new Set(data.map((m) => m.id)));
       })
@@ -264,7 +280,7 @@ export function useMemberBelt({
     return () => {
       current = false;
     };
-  }, [tournamentId, enabled, filters, refetchKey]);
+  }, [tournamentId, enabled, filter, refetchKey]);
 
   const belt = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -306,9 +322,12 @@ export function useMemberBelt({
           size="sm"
           iconOnly
           label="Filter members"
-          active={filterActive}
-          onOpen={() => setShowFilterModal(true)}
-          onClear={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
+          count={filterCount}
+          onOpen={openFilterModal}
+          onClear={() => applyFilter(emptyFilter())}
+          saved={savedFilters}
+          applied={filter}
+          onApplySaved={applyFilter}
         />
         <SortButton
           size="sm"
@@ -333,10 +352,13 @@ export function useMemberBelt({
     [
       selectMode,
       displayButton,
-      filterActive,
+      filter,
+      filterCount,
+      savedFilters,
+      openFilterModal,
       sortActive,
       applyDisplay,
-      applyFilters,
+      applyFilter,
       applySort,
       displayDefaults,
       filterDefaults,
@@ -389,7 +411,7 @@ export function useMemberBelt({
                   variant="secondary"
                   onClick={() => {
                     setQuery("");
-                    applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS));
+                    applyFilter(emptyFilter());
                   }}
                 >
                   Clear filters
@@ -412,20 +434,21 @@ export function useMemberBelt({
         )}
       </div>
     ),
-    [belt, members.length, query, filterActive, display, applyFilters],
+    [belt, members.length, query, filterActive, display, applyFilter],
   );
 
   const modals = (
     <>
-      {/* No `options` — the roster's own modal fetches the real tournament's
-          filter options itself when it isn't handed pre-built ones. */}
       {showFilterModal && (
-        <MembersFilterModal
-          tournamentId={tournamentId}
-          roleOptions={roleCatalog.map((r) => ({ value: String(r.id), label: r.label }))}
-          filters={filters}
-          defaults={filterDefaults}
-          onApply={applyFilters}
+        <FilterBuilderModal
+          title="Filter members"
+          fields={filterFields}
+          loading={filterOptions === null}
+          loadError={filterOptionsError}
+          filter={filter}
+          defaults={filterToTab ? filterDefaults : undefined}
+          saved={savedFilters}
+          onApply={applyFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}

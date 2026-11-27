@@ -1,10 +1,22 @@
 import asyncio
+from unittest.mock import Mock
 
+import discord
 import httpx2
 import pytest
 
 from app.services.discord import rest
 from app.services.discord.rest import DiscordRest, DiscordWaitTooLong, InteractionReplyError
+
+
+async def test_adding_a_role_to_a_member_who_left_does_nothing(monkeypatch):
+    async def unknown_member(self, route, **kwargs):
+        raise discord.NotFound(
+            Mock(status=404, reason="Not Found"), {"code": 10007, "message": "Unknown Member"}
+        )
+
+    monkeypatch.setattr(DiscordRest, "_request", unknown_member)
+    await DiscordRest("token").add_member_role(1, 2, 3)
 
 
 async def test_tests_cannot_reach_the_real_discord_api():

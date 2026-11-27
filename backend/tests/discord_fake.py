@@ -213,6 +213,8 @@ class FakeDiscord:
 
     async def add_member_role(self, guild_id: int, user_id: int, role_id: int) -> None:
         guild = self.guilds[guild_id]
+        if user_id not in guild.members or role_id not in guild.roles:
+            return
         _require_below_bot(guild, role_id)
         if role_id not in guild.members[user_id]:
             guild.members[user_id].append(role_id)

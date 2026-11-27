@@ -1,9 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { eventsFilterFromStored } from "@/components/tournament/events/EventsFilterModal";
 import { ALL_DUOSMIUM_ROLES, ExportModal } from "@/components/tournament/exports/ExportModal";
-import { membersFilterFromStored } from "@/components/tournament/members/MembersFilterModal";
 import { Button } from "@/components/ui/Button";
 import { DrillMenu, MenuHeading, MenuItem, MenuNote } from "@/components/ui/DrillMenu";
 import { IconExport } from "@/components/ui/Icons";
@@ -25,6 +23,7 @@ import {
   runExport,
   trackNamesOf,
 } from "@/lib/exports/run";
+import { emptyFilter } from "@/lib/filters/model";
 import { useToast } from "@/lib/useToast";
 
 const TORUS_OPTIONS = Object.entries(
@@ -93,8 +92,8 @@ export function ExportButton({
       const result = await runExport(
         tournament,
         choice,
-        membersFilterFromStored(custom?.member_filters),
-        eventsFilterFromStored(custom?.event_filters),
+        custom?.member_filter ?? emptyFilter(),
+        custom?.event_filter ?? emptyFilter(),
       );
       if (result.rows.length === 0) {
         show("Nothing to export.", "error");

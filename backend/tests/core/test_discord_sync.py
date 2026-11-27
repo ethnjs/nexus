@@ -51,7 +51,10 @@ def test_leave_notification_is_sent_only_when_the_transaction_commits():
 class IdleSyncer:
     """Keeps the drain test off the database's marks."""
 
-    async def run_pending(self) -> None:
+    async def start_pending(self) -> None:
+        return None
+
+    async def stop(self) -> None:
         return None
 
 

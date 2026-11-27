@@ -10,9 +10,10 @@ picked up next time. A failure backs the marks off exponentially, up to an hour.
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Protocol
 
 import psycopg
@@ -38,6 +39,9 @@ LEASE = timedelta(minutes=10)
 BUSY_RETRY = timedelta(seconds=30)
 MAX_BACKOFF = timedelta(hours=1)
 BATCH = 200
+# Discord rate-limits each server separately, so servers sync side by side; the cap bounds the
+# database connections and threads they hold.
+MAX_SERVERS = 5
 
 SessionScope = Callable[[], contextlib.AbstractContextManager[Session]]
 
@@ -54,14 +58,18 @@ def backoff(attempts: int) -> timedelta:
     return min(timedelta(seconds=5 * 2**attempts), MAX_BACKOFF)
 
 
-def claim_marks(db: Session, limit: int = BATCH) -> tuple[datetime, dict[int, list[Claimed]]]:
-    """Leases the due marks, grouped by server link, and returns them with the claim time."""
+def claim_marks(
+    db: Session, limit: int = BATCH, *, skip: Collection[int] = ()
+) -> tuple[datetime, dict[int, list[Claimed]]]:
+    """Leases the due marks, grouped by server link, and returns them with the claim time. Marks
+    of the links in `skip` are left for later."""
     now = db.scalar(select(func.clock_timestamp()))
     assert now is not None
+    query = db.query(DiscordSyncMark).filter(DiscordSyncMark.next_attempt_at <= now)
+    if skip:
+        query = query.filter(DiscordSyncMark.link_id.notin_(list(skip)))
     rows = (
-        db.query(DiscordSyncMark)
-        .filter(DiscordSyncMark.next_attempt_at <= now)
-        .order_by(DiscordSyncMark.next_attempt_at, DiscordSyncMark.id)
+        query.order_by(DiscordSyncMark.next_attempt_at, DiscordSyncMark.id)
         .limit(limit)
         .with_for_update(skip_locked=True)
         .all()
@@ -97,10 +105,18 @@ def _retry(db: Session, marks: list[Claimed], delay: timedelta | None = None) ->
 
 
 class Syncer:
-    """Reconciles claimed marks. Database work runs in threads, never on the event loop."""
+    """Reconciles claimed marks, each server in its own task, so a server waiting out a rate
+    limit doesn't hold up the others. Database work runs in threads, never on the event loop."""
 
-    def __init__(self, session_scope: SessionScope = build.default_session_scope) -> None:
+    def __init__(
+        self,
+        session_scope: SessionScope = build.default_session_scope,
+        *,
+        max_servers: int = MAX_SERVERS,
+    ) -> None:
         self._scope = session_scope
+        self._slots = asyncio.Semaphore(max_servers)
+        self._running: dict[int, asyncio.Task[None]] = {}
 
     async def _in_db[T](self, fn: Callable[[Session], T]) -> T:
         def run() -> T:
@@ -111,13 +127,39 @@ class Syncer:
 
         return await asyncio.to_thread(run)
 
-    async def run_pending(self) -> None:
+    async def start_pending(self) -> None:
+        """Starts a sync for every server with due marks. A server already syncing keeps its new
+        marks until it finishes, so no server ever has two syncs at once."""
         while True:
-            claimed_at, by_link = await self._in_db(claim_marks)
+            claim = partial(claim_marks, skip=set(self._running))
+            claimed_at, by_link = await self._in_db(claim)
             for link_id, marks in by_link.items():
-                await self.sync_link(link_id, marks, claimed_at)
+                self._running[link_id] = asyncio.create_task(
+                    self._sync_in_slot(link_id, marks, claimed_at)
+                )
             if sum(len(m) for m in by_link.values()) < BATCH:
                 return
+
+    async def run_pending(self) -> None:
+        """Syncs every server with due marks, and returns once they're all done."""
+        await self.start_pending()
+        await asyncio.gather(*self._running.values())
+
+    async def stop(self) -> None:
+        tasks = list(self._running.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _sync_in_slot(self, link_id: int, marks: list[Claimed], claimed_at: datetime) -> None:
+        try:
+            async with self._slots:
+                await self.sync_link(link_id, marks, claimed_at)
+        except Exception:
+            # Only the database failing gets here; the marks' lease runs out and they're retried.
+            log.exception("Discord sync for link %s failed", link_id)
+        finally:
+            self._running.pop(link_id, None)
 
     async def sync_link(self, link_id: int, marks: list[Claimed], claimed_at: datetime) -> None:
         state = await self._in_db(lambda db: _link_state(db, link_id))
@@ -184,7 +226,7 @@ class Syncer:
             await self._in_db(lambda db: _fail(db, link_id, marks, error))
             return
         rest = discord_rest.get_rest()
-        for mark in marks:
+        for i, mark in enumerate(marks):
             assert mark.discord_user_id is not None
             try:
                 member = await rest.member(snapshot.guild_id, mark.discord_user_id)
@@ -192,6 +234,12 @@ class Syncer:
                 if member is not None:
                     wanted = desired.get(mark.discord_user_id)
                     await apply_member(rest, snapshot, live, member, wanted, above_bot)
+            except discord_rest.DiscordWaitTooLong as exc:
+                # Every later member would wait too, so they all back off with this one.
+                log.warning("Discord member sync for link %s stopped: %s", link_id, exc)
+                failed.extend(marks[i:])
+                errors.append(exc)
+                break
             except Exception as exc:
                 log.exception("Discord member sync for link %s failed", link_id)
                 failed.append(mark)
@@ -221,21 +269,26 @@ class Syncer:
 
     async def _sync_structure(self, link_id: int) -> set[str] | None:
         """The roles above the bot's, or None if a build started and holds the link."""
-        if not await self._in_db(lambda db: build.claim_sync(db, link_id)):
+        claim = await self._in_db(lambda db: build.claim_sync(db, link_id))
+        if claim is None:
             return None
+
+        def refresh(_link_id: int) -> None:
+            with self._scope() as db:
+                build.refresh_sync(db, claim)
+
+        store = build.Store(self._scope)
         try:
-            snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
-            rest = discord_rest.get_rest()
-            live = await build.fetch_live(rest, snapshot)
-            plan, above_bot = plan_structure(snapshot, live)
-            if plan.actions:
-                store = build.Store(self._scope)
-                await build.execute(
-                    plan, snapshot, live, rest, store, heartbeat=store.sync_heartbeat
-                )
-            return above_bot
+            async with build.kept_alive(link_id, refresh):
+                snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
+                rest = discord_rest.get_rest()
+                live = await build.fetch_live(rest, snapshot)
+                plan, above_bot = plan_structure(snapshot, live)
+                if plan.actions:
+                    await build.execute(plan, snapshot, live, rest, store)
+                return above_bot
         finally:
-            await self._in_db(lambda db: build.release_sync(db, link_id))
+            await self._in_db(lambda db: build.release_sync(db, claim))
 
     async def _sync_members(
         self, link_id: int, accounts: list[int | None], above_bot: set[str]
@@ -244,11 +297,14 @@ class Syncer:
             return
         snapshot, live, desired = await self._member_context(link_id, accounts)
         rest = discord_rest.get_rest()
-        for account in accounts:
+
+        async def sync(account: int | None) -> None:
             assert account is not None
             member = await rest.member(snapshot.guild_id, account)
             if member is not None:
                 await apply_member(rest, snapshot, live, member, desired.get(account), above_bot)
+
+        await _each_member(link_id, accounts, sync)
 
     async def _sync_everyone(self, link_id: int, above_bot: set[str]) -> None:
         snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
@@ -263,9 +319,31 @@ class Syncer:
             return desired_members(db, link, ids)
 
         desired = await self._in_db(desired_for)
-        for member in members:
+
+        async def sync(member: dict) -> None:
             wanted = desired.get(int(member["user"]["id"]))
             await apply_member(rest, snapshot, live, member, wanted, above_bot)
+
+        await _each_member(link_id, members, sync)
+
+
+async def _each_member[T](
+    link_id: int, members: Iterable[T], sync: Callable[[T], Awaitable[None]]
+) -> None:
+    """Syncs every member even if some fail, then raises the last failure so the marks back off
+    and the error is reported. A long rate-limit wait stops it at once: every later call would
+    wait too."""
+    error: Exception | None = None
+    for member in members:
+        try:
+            await sync(member)
+        except discord_rest.DiscordWaitTooLong:
+            raise
+        except Exception as exc:
+            log.exception("Discord sync of one member for link %s failed", link_id)
+            error = exc
+    if error is not None:
+        raise error
 
 
 def _link_state(db: Session, link_id: int) -> str:
@@ -317,7 +395,8 @@ class Leaver(Protocol):
 
 
 class PendingSync(Protocol):
-    async def run_pending(self) -> None: ...
+    async def start_pending(self) -> None: ...
+    async def stop(self) -> None: ...
 
 
 class Drain:
@@ -357,10 +436,11 @@ class Drain:
                     except Exception:
                         log.exception("Couldn't act on the %s notification %r", CHANNEL, payload)
                 try:
-                    await self._syncer.run_pending()
+                    await self._syncer.start_pending()
                 except Exception:
                     log.exception("The Discord sync loop failed")
         finally:
+            await self._syncer.stop()
             if conn is not None:
                 await asyncio.to_thread(conn.close)
 

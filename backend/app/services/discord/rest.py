@@ -104,7 +104,10 @@ class DiscordRest:
             user_id=user_id,
             role_id=role_id,
         )
-        await self._request(route)
+        try:
+            await self._request(route)
+        except discord.NotFound:
+            return
 
     async def remove_member_role(self, guild_id: int, user_id: int, role_id: int) -> None:
         route = Route(

@@ -1,0 +1,75 @@
+---
+title: v1.8.0-beta
+description: A new filter builder with saved filters, faster ways to staff the assignments board, 18+ and 21+ staffing, and panels that no longer squeeze the page
+date: 2026-11-25T12:00:00-08:00
+---
+
+Filtering is now a builder that can combine conditions with "and" and "or". You can also save filters that are used often. Staffing the assignments board has new shortcuts, events can have staffing needs by age, and detail panels open over the page instead of squeezing it.
+
+## What's new
+
+### A new way to filter
+
+Every table that has a **Filter** button now opens a filter builder. Each row is a condition, like "Role is any of Event Supervisor" or "Event has no location".
+
+- Pick a field, how to compare it (**is any of**, **is all of**, **is none of**, **is empty**, **is not empty**, and dates like **is within the next 30 days**), then the values.
+- Rows combine with **and** by default. Click the join to switch it to **or**, or add a group to mix the two, like "confirmed for Day 1, and either a judge or a runner".
+- Type in **Search for a filter** at the bottom to add a filter by name, like "under 18" or "unassigned Day 1".
+- Drag rows to reorder them or move them in and out of a group.
+- The badge on the Filter button counts the conditions that are on. Press F to open the filter on most pages.
+
+### Saved filters
+
+Save a filter you use often and bring it back in one click.
+
+- Pick **Apply & save** from the arrow beside **Apply**, then name it. Keep a loaded filter's name to update it.
+- Open your saved filters from the arrow beside the Filter button on the table, or from **Saved filters** in the filter window, where you can also rename and delete them.
+- Saved filters are yours alone, and each table keeps its own.
+
+### More to filter by
+
+- **Members:** members who hold all of several roles, members under 18 or under 21, and members assigned to specific events on a day.
+- **Events:** location by building or room on each day, and staffing by a single role, 18+ or 21+, as well as by all needs.
+- **Shifts:** by day, by a time range like 8:00 AM–12:00 PM, and by the events a shift is on, such as every shift Circuit Lab uses.
+- **Buildings:** search the grid by building, room or the events placed in a room.
+- **Tournaments:** dates within the next or last number of days.
+- **Admins:** users whose profile is complete or incomplete, and users in, not in, or in no tournament.
+
+### Staff the assignments board faster
+
+- **Assign as** lets you pick which roles people get when you drop them on an event. Otherwise they get the track's default role.
+- **+ Add** under each track opens a search of everyone not on it yet.
+- Right-click a member's chip to add them to another track's shifts.
+- **Select** in the member list lets you tick several people and assign them all at once with **Assign to…**.
+- Select two to four people and press **Compare** to see them side by side and assign each from there.
+- Each track's settings, like its default role, are now in one **Track settings** window.
+
+### 18+ and 21+ staffing
+
+Events can now require a number of people who are 18+ or 21+ in any role, on each day. These count members who shared their age, and show everywhere staffing does: the event panel, the events table, the board and its filters and sorting.
+
+The event panel's staffing is now its own section, a table for each day with how many are needed and how many are staffed.
+
+### Detail panels open over the page
+
+Event, shift, member and user panels now open over the right side of the page instead of shrinking it, so tables and the assignments board keep their full width. The lists you drag from, like the assignments member list and the buildings and zones event lists, stay beside the page.
+
+## Improvements
+
+- Enter your emailed sign-in code in one box per digit. It submits itself once all six are in, including when your phone fills it in from the email.
+- The admin users table remembers your filters and sort.
+- Volunteer experience on profiles lists the NEXUS tournaments a person took part in, with their roles and events there
+- On the assignments board, the event list scrolls sideways on narrow screens, and the toolbar buttons shrink to icons.
+- The member panel's assignment timeline gives each shift room for its name and time.
+- The admin users table refreshes when you come back to the tab.
+
+## Fixes
+
+- Coordinators without permission to manage the tournament now see the track tabs on the assignments board and assignments in member panels.
+- On the All tab, a test writer confirmed for Test Writing no longer gets a "has not confirmed" warning.
+- The board shows the right start time after a gap between two shifts.
+- An event's shifts can no longer be edited into overlapping.
+- The member panel no longer breaks when a section was missing from its saved settings.
+- Volunteer experience lists only NEXUS tournaments that have ended.
+- Dates and times in pickers are no longer bolder than the text fields around them.
+- The sign-in and sign-up cards are centered on phones.

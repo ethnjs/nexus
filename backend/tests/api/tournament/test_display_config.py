@@ -3,6 +3,8 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
 from app.core.tournament.display_config import DEFAULT_SECTION_ORDER
 from app.models.models import (
     Form,
@@ -15,6 +17,15 @@ from app.models.models import (
     TournamentTrack,
 )
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
+
+
+def _cond(field, *values, group=None, op="any_of") -> dict:
+    return {"field": field, "group": group, "op": op, "values": list(values)}
+
+
+def _filter(*conditions) -> dict:
+    return {"op": "and", "conditions": list(conditions)}
+
 
 # ---------------------------------------------------------------------------
 # GET — manage_members, lenient on read
@@ -60,7 +71,7 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
             "hidden": ["track:999", "not_a_real_namespace:x"],
             "columns": None,
             "sections": None,
-            "filters": None,
+            "filter": None,
             "sort": None,
             "sorts": None,
             "collapsed": None,
@@ -87,7 +98,7 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
             **config,
             "columns": None,
             "sections": None,
-            "filters": None,
+            "filter": None,
             "sort": None,
             "sorts": None,
             "collapsed": None,
@@ -123,6 +134,9 @@ def test_display_config_is_per_member(client, td_user, other_user, td_tournament
     assert saved["members_table"]["columns"] == ["email"]
 
 
+ROLE_AND_TRACK = _filter(_cond("role", "3"), _cond("track", "confirmed", group="7"))
+
+
 def test_put_display_config_saves_filters_and_sort(client, td_user, td_tournament):
     """Filters and sort ride along in the same surface blob — they're the
     same "how this coordinator reads the roster" state the columns are."""
@@ -131,36 +145,85 @@ def test_put_display_config_saves_filters_and_sort(client, td_user, td_tournamen
         f"/tournaments/{td_tournament.id}/display-config/",
         json={
             "members_table": {
-                "filters": {"role": ["3"], "track": ["7:confirmed"]},
+                "filter": ROLE_AND_TRACK,
                 "sort": {"field": "last_name", "direction": "desc"},
             }
         },
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
-    assert saved["members_table"]["filters"] == {"role": ["3"], "track": ["7:confirmed"]}
+    assert saved["members_table"]["filter"] == ROLE_AND_TRACK
     assert saved["members_table"]["sort"] == {"field": "last_name", "direction": "desc"}
 
 
 def test_put_display_config_saves_assigned_filter(client, td_user, td_tournament):
-    """Every roster query param has to be storable, or the filter applies but
+    """Every roster filter field has to be storable, or the filter applies but
     silently fails to persist — the write is fire-and-forget, so a rejected
-    key is invisible to the coordinator who set it."""
+    field is invisible to the coordinator who set it."""
     login(client, "td@test.com", "tdpass")
+    unassigned = _filter(_cond("assigned", group="3", op="empty"))
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_table": {"filters": {"assigned": ["unassigned"]}}},
+        json={"members_table": {"filter": unassigned}},
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
-    assert saved["members_table"]["filters"] == {"assigned": ["unassigned"]}
+    assert saved["members_table"]["filter"] == unassigned
 
 
 def test_put_display_config_rejects_unknown_filter(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_table": {"filters": {"not_a_filter": ["x"]}}},
+        json={"members_table": {"filter": _filter(_cond("not_a_filter", "x"))}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_display_config_saves_filter_conditions(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    group = {
+        "op": "and",
+        "conditions": [
+            {"field": "track", "group": "7", "op": "none_of", "values": ["declined"]},
+            {
+                "op": "or",
+                "conditions": [
+                    {"field": "role", "group": None, "op": "any_of", "values": ["3"]},
+                    {"field": "affiliation", "group": None, "op": "empty", "values": []},
+                ],
+            },
+        ],
+    }
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filter": group}},
+    )
+    assert response.status_code == 200
+    assert response.json()["members_table"]["filter"] == group
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"field": "not_a_filter", "op": "any_of", "values": ["x"]},
+        {"field": "role", "op": "contains", "values": ["x"]},
+        {"field": "affiliation", "op": "empty", "values": ["x"]},
+        {"field": "role", "op": "before", "values": ["yesterday"]},
+        {"field": "role", "op": "within_last", "values": ["-3"]},
+        {"field": "role", "op": "within_next", "values": ["soon"]},
+        {"op": "or", "conditions": [{"op": "and", "conditions": []}]},
+        {"op": "xor", "conditions": []},
+        {"field": "track", "values": ["declined"]},
+        {"field": "role", "group": "7", "values": ["3"]},
+        {"field": "age", "op": "empty"},
+    ],
+)
+def test_put_display_config_rejects_malformed_filter(client, td_user, td_tournament, condition):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filter": {"op": "and", "conditions": [condition]}}},
     )
     assert response.status_code == 422
 
@@ -171,7 +234,7 @@ def test_put_display_config_keeps_unresolvable_filter_values(client, td_user, td
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_table": {"filters": {"track": ["99999:confirmed"]}}},
+        json={"members_table": {"filter": _filter(_cond("track", "confirmed", group="99999"))}},
     )
     assert response.status_code == 200
 
@@ -223,11 +286,11 @@ def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournamen
         "assignments_events:all": {
             "hidden": [],
             "columns": ["division", "time"],
-            "filters": {"staffing": ["staffed"], "track": ["3"]},
+            "filter": _filter(_cond("staffing", "staffed"), _cond("track", "3")),
         },
         "assignment_card:all": {
             "hidden": ["card_field:availability", "card_track:event_preferences:7"],
-            "filters": {"assigned": ["unassigned"], "age": ["over_18"]},
+            "filter": _filter(_cond("assigned", group="7", op="empty"), _cond("age", "over_18")),
         },
     }
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
@@ -323,14 +386,14 @@ def test_put_buildings_events_saves_card_fields_and_filters(client, td_user, td_
         json={
             "buildings_events:track:3": {
                 "hidden": ["event_field:format", "event_field:shifts"],
-                "filters": {"division": ["C"], "category": ["5"]},
+                "filter": _filter(_cond("division", "C"), _cond("category", "5")),
             }
         },
     )
     assert response.status_code == 200
     saved = response.json()["buildings_events:track:3"]
     assert saved["hidden"] == ["event_field:format", "event_field:shifts"]
-    assert saved["filters"] == {"division": ["C"], "category": ["5"]}
+    assert saved["filter"] == _filter(_cond("division", "C"), _cond("category", "5"))
 
 
 def test_put_buildings_events_rejects_unknown_card_fields(client, td_user, td_tournament):
@@ -360,7 +423,7 @@ def test_put_zones_members_takes_the_member_card_settings(client, td_user, td_to
         json={
             "zones_members:track:3": {
                 "hidden": ["card_field:availability"],
-                "filters": {"role": ["2"]},
+                "filter": _filter(_cond("role", "2")),
                 "sorts": [{"field": "last_name", "direction": "asc"}],
             }
         },
@@ -368,7 +431,7 @@ def test_put_zones_members_takes_the_member_card_settings(client, td_user, td_to
     assert response.status_code == 200, response.text
     saved = response.json()["zones_members:track:3"]
     assert saved["hidden"] == ["card_field:availability"]
-    assert saved["filters"] == {"role": ["2"]}
+    assert saved["filter"] == _filter(_cond("role", "2"))
 
 
 def test_put_zones_members_requires_a_tab(client, td_user, td_tournament):
@@ -1149,7 +1212,7 @@ def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_t
         json={
             "events_table": {
                 "columns": ["division", "category", "tracks", "shifts"],
-                "filters": {"division": ["A"], "category": ["Life Science"]},
+                "filter": _filter(_cond("division", "A"), _cond("category", "Life Science")),
                 "sort": {"field": "day", "direction": "asc"},
             }
         },
@@ -1157,31 +1220,33 @@ def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_t
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["events_table"]
     assert saved["columns"] == ["division", "category", "tracks", "shifts"]
-    assert saved["filters"] == {"division": ["A"], "category": ["Life Science"]}
+    assert saved["filter"] == _filter(_cond("division", "A"), _cond("category", "Life Science"))
     assert saved["sort"] == {"field": "day", "direction": "asc"}
 
 
 def test_events_table_accepts_the_boards_filter_keys(client, td_user, td_tournament):
     """The table and the board filter with one predicate, so they share keys."""
     login(client, "td@test.com", "tdpass")
-    filters = {
-        "track": ["3"],
-        "building": ["5", "__unset__"],
-        "shifts": ["none"],
-        "shift": ["9"],
-        "staffing": ["short", "empty"],
-    }
+    board_filter = _filter(
+        _cond("track", "3"),
+        _cond("shift", "9", group="3"),
+        _cond("location", "building:5", "room:12", group="3"),
+        _cond("staffing", "short", "empty", group="all"),
+        _cond("staffing", "short", group="over_18_needed"),
+    )
     for surface in ("events_table", "assignments_events:all"):
         response = client.put(
             f"/tournaments/{td_tournament.id}/display-config/",
-            json={surface: {"hidden": [], "filters": filters}},
+            json={surface: {"hidden": [], "filter": board_filter}},
         )
         assert response.status_code == 200, surface
 
 
 def test_event_surfaces_accept_format_impound_and_self_schedule(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    filters = {"format": ["build"], "impound": ["yes"], "self_schedule": ["no"]}
+    details = _filter(
+        _cond("format", "build"), _cond("impound", "yes"), _cond("self_schedule", "no")
+    )
     sorts = [
         {"field": "format", "direction": "asc"},
         {"field": "impound", "direction": "desc"},
@@ -1192,10 +1257,10 @@ def test_event_surfaces_accept_format_impound_and_self_schedule(client, td_user,
         json={
             "events_table": {
                 "columns": ["format", "impound", "self_schedule"],
-                "filters": filters,
+                "filter": details,
                 "sorts": sorts,
             },
-            "assignments_events:all": {"hidden": [], "filters": filters, "sorts": sorts},
+            "assignments_events:all": {"hidden": [], "filter": details, "sorts": sorts},
         },
     )
     assert response.status_code == 200, response.text
@@ -1331,7 +1396,7 @@ def test_put_rejects_roster_filter_on_events_table(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"events_table": {"filters": {"role": ["3"]}}},
+        json={"events_table": {"filter": _filter(_cond("role", "3"))}},
     )
     assert response.status_code == 422
 
@@ -1351,7 +1416,7 @@ def test_put_rejects_filters_on_a_surface_that_has_none(client, td_user, td_tour
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"filters": {"role": ["3"]}}},
+        json={"members_panel": {"filter": _filter(_cond("role", "3"))}},
     )
     assert response.status_code == 422
 
@@ -1362,7 +1427,7 @@ def test_put_keeps_unresolvable_events_filter_values(client, td_user, td_tournam
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"events_table": {"filters": {"category": ["A Category Since Renamed"]}}},
+        json={"events_table": {"filter": _filter(_cond("category", "A Category Since Renamed"))}},
     )
     assert response.status_code == 200
 
@@ -1427,12 +1492,19 @@ def test_manage_events_alone_can_read_and_write_display_config(
 
 def test_put_accepts_shifts_table_filters_and_sort(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
+    shift_filter = _filter(
+        _cond("track", "3"),
+        _cond("day", "2026-03-14"),
+        _cond("time", "08:00", "", op="between"),
+        _cond("events", "12", op="all_of"),
+        _cond("events", op="empty"),
+    )
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={
             "shifts_table": {
                 "hidden": [],
-                "filters": {"track": ["3"], "events": ["none"]},
+                "filter": shift_filter,
                 "sorts": [
                     {"field": "start", "direction": "asc"},
                     {"field": "label", "direction": "desc"},
@@ -1442,8 +1514,23 @@ def test_put_accepts_shifts_table_filters_and_sort(client, td_user, td_tournamen
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["shifts_table"]
-    assert saved["filters"] == {"track": ["3"], "events": ["none"]}
+    assert saved["filter"] == shift_filter
     assert saved["sorts"][0] == {"field": "start", "direction": "asc"}
+
+
+@pytest.mark.parametrize(
+    "values",
+    [["08:00"], ["", ""], ["8am", ""], ["24:00", ""], ["08:00", "12:00", "13:00"]],
+)
+def test_shifts_table_rejects_malformed_time_range(client, td_user, td_tournament, values):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "shifts_table": {"hidden": [], "filter": _filter(_cond("time", *values, op="between"))}
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_shifts_table_rejects_columns_and_another_tables_vocabulary(client, td_user, td_tournament):
@@ -1452,7 +1539,7 @@ def test_shifts_table_rejects_columns_and_another_tables_vocabulary(client, td_u
     login(client, "td@test.com", "tdpass")
     for body in (
         {"hidden": [], "columns": ["track"]},
-        {"hidden": [], "filters": {"category": ["x"]}},
+        {"hidden": [], "filter": _filter(_cond("category", "x"))},
         {"hidden": [], "sorts": [{"field": "staffing", "direction": "asc"}]},
     ):
         response = client.put(
@@ -1598,7 +1685,9 @@ def test_members_table_saves_affiliation_and_year_level(client, td_user, td_tour
             "members_table": {
                 "hidden": [],
                 "columns": ["affiliation", "year_level"],
-                "filters": {"affiliation": ["UCLA"], "year_level": ["1", "graduate"]},
+                "filter": _filter(
+                    _cond("affiliation", "UCLA"), _cond("year_level", "1", "graduate")
+                ),
                 "sorts": [
                     {"field": "affiliation", "direction": "asc"},
                     {"field": "year_level", "direction": "desc"},

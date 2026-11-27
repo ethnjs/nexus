@@ -239,6 +239,8 @@ export interface AdminUserListItem
   extends AdminUserSlim,
     Pick<UserFull, "student_status" | "university" | "year_level" | "employer"> {
   tournament_ids: number[];
+  // The same test as the dashboard's incomplete-profile banner.
+  is_profile_complete: boolean;
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
@@ -442,6 +444,16 @@ export const usersApi = {
   getDisplayConfig: () => api.get<DisplayConfig>("/users/me/display-config/"),
   setDisplayConfig: (config: DisplayConfig) =>
     api.put<DisplayConfig>("/users/me/display-config/", config),
+  // Named filters on surfaces outside any tournament (admin_users).
+  listSavedFilters: (surface?: string) =>
+    api.get<SavedFilter[]>(
+      `/users/me/saved-filters/${surface ? `?surface=${encodeURIComponent(surface)}` : ""}`,
+    ),
+  createSavedFilter: (body: SavedFilterInput) =>
+    api.post<SavedFilter>("/users/me/saved-filters/", body),
+  updateSavedFilter: (id: number, body: Partial<Omit<SavedFilterInput, "surface">>) =>
+    api.patch<SavedFilter>(`/users/me/saved-filters/${id}/`, body),
+  deleteSavedFilter: (id: number) => api.delete<void>(`/users/me/saved-filters/${id}/`),
 
   addCompetitionExperience: (body: { event_id: number; school: string; notes?: string | null }) =>
     api.post<CompetitionExperience>("/users/me/competition-experience/", body),
@@ -1452,6 +1464,8 @@ export interface MemberFilterOptions {
   shift_days: FilterOptionGroup[];
   lunch_categories: FilterOptionGroup[];
   event_preferences: FilterOptionGroup[];
+  // Per track, the events a member can be assigned to there.
+  assignments: FilterOptionGroup[];
   competition_events: FilterOptionItem[];
   volunteer_events: FilterOptionItem[];
   // Schools' short names and employers, merged where they read the same.
@@ -1478,14 +1492,8 @@ export interface FilterOptionGroup {
 }
 
 export const membersApi = {
-  // An options object rather than positional args: the roster now takes a
-  // surface plus eight repeatable filter params, and `list(id, false, undefined,
-  // ...)` at the call site says nothing about what's being asked for.
-  //
   // `surface` filters hidden items and, when `fields` is not given, decides
-  // which field groups the rows carry (see fields_for_surface). `filters`
-  // maps a param name to the values to include — omitted or empty means that
-  // filter doesn't apply.
+  // which field groups the rows carry (see fields_for_surface).
   list: (
     tournamentId: number,
     opts: {
@@ -1494,7 +1502,8 @@ export const membersApi = {
       // identity only. `surface` fills in when this is omitted, so the members
       // table doesn't have to restate what its saved columns need.
       fields?: MembershipField[];
-      filters?: Record<string, string[]>;
+      // The roster filter, already pruned of half-built rows.
+      filter?: FilterGroup;
       // Identity/authority narrowing — what the role pickers ask for. A picker
       // is this roster with a name search and a role bound on it, which is why
       // there is no separate search endpoint any more.
@@ -1511,10 +1520,8 @@ export const membersApi = {
     if (opts.roleId !== undefined) params.set("role_id", String(opts.roleId));
     if (opts.excludeRoleId !== undefined) params.set("exclude_role_id", String(opts.excludeRoleId));
     if (opts.maxRank !== undefined) params.set("max_rank", String(opts.maxRank));
-    for (const [key, values] of Object.entries(opts.filters ?? {})) {
-      // Repeated rather than comma-joined: a lunch value can legitimately
-      // contain a comma ("Rice, beans").
-      for (const value of values) params.append(key, value);
+    if (opts.filter && opts.filter.conditions.length > 0) {
+      params.set("filter", JSON.stringify(opts.filter));
     }
     return api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?${params}`);
   },
@@ -2766,11 +2773,8 @@ export interface DisplayConfigSurface {
   // Member panel: section order and per-section visibility. null means the
   // default order with everything shown.
   sections?: DisplayConfigSection[] | null;
-  // Either table: committed filters, keyed by that table's own filter
-  // vocabulary — the roster stores query params it will send back, the
-  // events table stores the values it excludes client-side. Sets don't
-  // survive JSON, so the wire shape is arrays.
-  filters?: Record<string, string[]> | null;
+  // Either table: the viewer's applied filter, in that table's fields.
+  filter?: FilterGroup | null;
   // Either table: the viewer's sort. null means the page's own default.
   sort?: DisplayConfigSort | null;
   // Surfaces that sort by more than one key, in precedence order — the first
@@ -2830,6 +2834,63 @@ export interface DisplayConfigSectionCatalogItem {
   fields: DisplayConfigCatalogItem[];
 }
 
+// Matches FilterCondition / FilterGroup. A paired roster field (track status,
+// assignments, availability, lunch, event preferences) names its track or
+// lunch category in `group`; every other field leaves it null.
+export type FilterOp =
+  | "any_of"
+  | "all_of"
+  | "none_of"
+  | "empty"
+  | "not_empty"
+  | "before"
+  | "after"
+  | "within_last"
+  | "within_next"
+  | "between";
+
+export interface FilterCondition {
+  field: string;
+  group?: string | null;
+  op: FilterOp;
+  values: string[];
+}
+
+// The top-level group may hold groups of conditions, one level deep.
+export interface FilterGroup {
+  op: "and" | "or";
+  conditions: (FilterCondition | FilterGroup)[];
+}
+
+// Matches SavedFilterRead. `surface` is the bare table key, never a tab.
+export interface SavedFilter {
+  id: number;
+  surface: string;
+  name: string;
+  filter: FilterGroup;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedFilterInput {
+  surface: string;
+  name: string;
+  filter: FilterGroup;
+}
+
+export const savedFiltersApi = {
+  list: (tournamentId: number, surface?: string) =>
+    api.get<SavedFilter[]>(
+      `/tournaments/${tournamentId}/saved-filters/${surface ? `?surface=${encodeURIComponent(surface)}` : ""}`,
+    ),
+  create: (tournamentId: number, body: SavedFilterInput) =>
+    api.post<SavedFilter>(`/tournaments/${tournamentId}/saved-filters/`, body),
+  update: (tournamentId: number, id: number, body: Partial<Omit<SavedFilterInput, "surface">>) =>
+    api.patch<SavedFilter>(`/tournaments/${tournamentId}/saved-filters/${id}/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/saved-filters/${id}/`),
+};
+
 export const displayConfigApi = {
   get: (tournamentId: number) =>
     api.get<DisplayConfig>(`/tournaments/${tournamentId}/display-config/`),
@@ -2865,9 +2926,9 @@ export interface ExportPresetInput {
   name: string;
   row_type: ExportRowType;
   columns: ExportPresetColumn[];
-  // Who it covers: roster query-param filters, and the board's event filters.
-  member_filters: Record<string, string[]>;
-  event_filters: Record<string, string[]>;
+  // Who it covers: the roster's filter, and the event lists' filter.
+  member_filter: FilterGroup;
+  event_filter: FilterGroup;
   // Every field must be one of `columns`' keys.
   sorts: DisplayConfigSort[];
   include_header: boolean;

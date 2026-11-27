@@ -6,12 +6,9 @@ availability — which is why it can't live in the browser: the client would
 have to be sent the whole tournament's onboarding data on every page load to
 answer questions about a handful of members.
 
-Two rules across the board:
-  * different filters AND together (a role filter and a shift filter both
-    have to pass),
-  * values within one filter OR together (any of the named roles matches).
+A filter is a tree of conditions (see apply_member_filter).
 
-Each filter is an EXISTS subquery rather than a join, so a member holding
+Each condition is an EXISTS subquery rather than a join, so a member holding
 three of the named roles is returned once, not three times.
 """
 
@@ -19,9 +16,11 @@ from __future__ import annotations
 
 import operator
 
-from sqlalchemy import exists, func, or_, true
-from sqlalchemy.orm import Query, aliased
+from sqlalchemy import and_, exists, func, or_, true
+from sqlalchemy.orm import Query, aliased, joinedload
 
+from app.core.filter_conditions import FILTER_GROUP_OPS
+from app.core.tournament.onboarding import onboarding_paths
 from app.models.models import (
     TournamentMembership,
     TournamentMembershipAvailability,
@@ -35,20 +34,19 @@ from app.models.models import (
     UserCompetitionExperience,
     UserVolunteerExperience,
 )
+from app.schemas.tournament.display_config import FilterCondition, FilterGroup
 
 # Sentinel accepted in the `role` filter for members holding no roles at all.
 # A plain "no roles" is not expressible as a role id, and it's the one members
 # a coordinator most often wants to find.
 NO_ROLES = "none"
 
-# Right-hand sentinel on every paired filter: the member answered *something*
-# for this track/day/category/question. The modal adds a chip for the left
-# half first (a track, a day, a lunch category) and only then narrows it, so
-# a chip has to mean something before its pill is touched.
+# A paired value meaning "anything in this group": any status on the track,
+# any shift on it, any lunch answer.
 ANY = "__any__"
 
-# An event-preference chip's rank condition, carried as one more value under
-# its track: "trackId:rank:{op}:{n}" — e.g. "3:rank:le:3", top three on track 3.
+# An event-preference rank condition, carried as one more value beside the
+# events: "rank:{op}:{n}", e.g. "rank:le:3" for the top three.
 RANK_PREFIX = "rank:"
 RANK_OPS = {
     "lt": operator.lt,
@@ -83,21 +81,6 @@ def _university_short_name():
     return func.coalesce(func.nullif(func.trim(University.abbreviation), ""), University.name)
 
 
-def _split_pairs(values: list[str]) -> list[tuple[str, str]]:
-    """Parses "left:right" filter values, dropping anything malformed.
-
-    Filter values come off a URL, so a bad one is a client bug or a stale
-    bookmark — neither worth failing a roster load over. The alternative
-    (422) would leave a TD staring at an error with no way to clear it.
-    """
-    pairs = []
-    for value in values:
-        left, sep, right = value.partition(":")
-        if sep and left and right:
-            pairs.append((left, right))
-    return pairs
-
-
 def _lunch_clause(category: str, value: str):
     """One lunch filter value as an EXISTS (or NOT EXISTS) over this
     membership's lunch rows for `category`.
@@ -122,11 +105,7 @@ def _lunch_clause(category: str, value: str):
 
 
 def _shift_ids_on_tracks(db, tournament, track_ids: set[int]) -> set[int]:
-    """Every shift of `tournament` belonging to one of the given tracks.
-
-    Was day-scoped, which needed a timezone conversion per shift; a shift now
-    carries its track outright. Track is also the better unit: two sites
-    running the same Saturday are separate questions."""
+    """Every shift of `tournament` belonging to one of the given tracks."""
     from app.models.models import TournamentShift
 
     return {
@@ -138,249 +117,396 @@ def _shift_ids_on_tracks(db, tournament, track_ids: set[int]) -> set[int]:
     }
 
 
-def apply_member_filters(
-    query: Query,
-    *,
-    tournament=None,
-    roles: list[str] | None = None,
-    tracks: list[str] | None = None,
-    lunch: list[str] | None = None,
-    event_preferences: list[str] | None = None,
-    competition_events: list[int] | None = None,
-    volunteer_events: list[int] | None = None,
-    age_flags: list[str] | None = None,
-    shifts: list[str] | None = None,
-    assigned: list[str] | None = None,
-    affiliations: list[str] | None = None,
-    year_levels: list[str] | None = None,
-) -> Query:
-    """Narrows a TournamentMembership query by the roster's filter params.
+def _roles_clause(values: list[str]):
+    # "roleId" or "roleId:trackId" — the role, optionally narrowed to the
+    # tracks it is held on. A tournament-wide grant counts on every track
+    # (the rule roles_on_track already states), so narrowing to Day 1 keeps
+    # a member who holds the role across the whole tournament.
+    any_scope: set[int] = set()
+    by_role: dict[int, set[int]] = {}
+    for value in values:
+        if value == NO_ROLES:
+            continue
+        role_part, _, track_part = value.partition(":")
+        if not role_part.isdigit():
+            continue
+        role_id = int(role_part)
+        if track_part and track_part != ANY and track_part.isdigit():
+            by_role.setdefault(role_id, set()).add(int(track_part))
+        else:
+            any_scope.add(role_id)
 
-    `tournament` is only needed to resolve a track-level availability filter
-    ("every shift on Feb 13") into shift ids — a shift's day depends on the
-    tournament's timezone, not on UTC."""
-    if roles:
-        # "roleId" or "roleId:trackId" — the role, optionally narrowed to the
-        # tracks it is held on. A tournament-wide grant counts on every track
-        # (the rule roles_on_track already states), so narrowing to Day 1 keeps
-        # a member who holds the role across the whole tournament.
-        any_scope: set[int] = set()
-        by_role: dict[int, set[int]] = {}
-        for value in roles:
-            if value == NO_ROLES:
-                continue
-            role_part, _, track_part = value.partition(":")
-            if not role_part.isdigit():
-                continue
-            role_id = int(role_part)
-            if track_part and track_part != ANY and track_part.isdigit():
-                by_role.setdefault(role_id, set()).add(int(track_part))
-            else:
-                any_scope.add(role_id)
-
-        clauses = []
-        if any_scope:
-            clauses.append(
-                exists().where(
-                    (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-                    & TournamentTrackAssignment.role_id.in_(any_scope)
-                )
-            )
-        for role_id, track_ids in by_role.items():
-            # An unnarrowed chip for the same role already covers every track.
-            if role_id in any_scope:
-                continue
-            clauses.append(
-                exists().where(
-                    (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-                    & (TournamentTrackAssignment.role_id == role_id)
-                    & (
-                        TournamentTrackAssignment.tournament_track_id.in_(track_ids)
-                        | TournamentTrackAssignment.is_tournament_wide
-                    )
-                )
-            )
-        if NO_ROLES in roles:
-            clauses.append(
-                ~exists().where(TournamentTrackAssignment.membership_id == TournamentMembership.id)
-            )
-        if clauses:
-            query = query.filter(or_(*clauses))
-
-    if tracks:
-        # "trackId:status" — the pairing is the point. Filtering by track and
-        # by status independently would match a member confirmed on one track
-        # and declined on another, which is the opposite of what was asked.
-        clauses = [
+    clauses = []
+    if any_scope:
+        clauses.append(
             exists().where(
-                (TournamentMembershipTrackStatus.membership_id == TournamentMembership.id)
-                & (TournamentMembershipTrackStatus.track_id == int(track_id))
-                & (true() if status == ANY else TournamentMembershipTrackStatus.status == status)
-            )
-            for track_id, status in _split_pairs(tracks)
-            if track_id.isdigit()
-        ]
-        if clauses:
-            query = query.filter(or_(*clauses))
-
-    if lunch:
-        # "category:value" — same pairing reasoning as tracks, plus the four
-        # sentinels: a lunch question can be free text, where the only useful
-        # question is whether it was answered at all.
-        clauses = [_lunch_clause(category, value) for category, value in _split_pairs(lunch)]
-        if clauses:
-            query = query.filter(or_(*clauses))
-
-    if event_preferences:
-        # "trackId:tournamentEventId" — an event ranked for one track says
-        # nothing about another, so the track has to travel with the event.
-        # A track's rank condition (see RANK_PREFIX) is checked on the same
-        # row as its events, so "Anatomy ranked < 3" can't be met by Anatomy
-        # unranked plus some other event at 1.
-        events_by_track: dict[int, set[str]] = {}
-        rank_by_track: dict[int, tuple[str, int]] = {}
-        for track_id, right in _split_pairs(event_preferences):
-            if not track_id.isdigit():
-                continue
-            if right.startswith(RANK_PREFIX):
-                op, _, n = right[len(RANK_PREFIX) :].partition(":")
-                if op in RANK_OPS and n.isdigit():
-                    rank_by_track[int(track_id)] = (op, int(n))
-            elif right == ANY or right.isdigit():
-                events_by_track.setdefault(int(track_id), set()).add(right)
-
-        clauses = []
-        # A rank alone, with no events picked, means any event at that rank.
-        for track_id in events_by_track.keys() | rank_by_track.keys():
-            events = events_by_track.get(track_id, {ANY})
-            condition = (
-                TournamentMembershipEventPreference.membership_id == TournamentMembership.id
-            ) & (TournamentMembershipEventPreference.track_id == track_id)
-            if ANY not in events:
-                condition &= TournamentMembershipEventPreference.tournament_event_id.in_(
-                    [int(event_id) for event_id in events]
-                )
-            if track_id in rank_by_track:
-                op, n = rank_by_track[track_id]
-                # An unranked row's NULL rank fails every comparison, so it
-                # never matches a rank condition.
-                condition &= RANK_OPS[op](TournamentMembershipEventPreference.rank, n)
-            clauses.append(exists().where(condition))
-        if clauses:
-            query = query.filter(or_(*clauses))
-
-    # Experience is the user's, not the membership's — these join through
-    # user_id rather than membership_id.
-    if competition_events:
-        query = query.filter(
-            exists().where(
-                (UserCompetitionExperience.user_id == TournamentMembership.user_id)
-                & UserCompetitionExperience.event_id.in_(competition_events)
-            )
-        )
-
-    if volunteer_events:
-        query = query.filter(
-            exists().where(
-                (UserVolunteerExperience.user_id == TournamentMembership.user_id)
-                & UserVolunteerExperience.event_id.in_(volunteer_events)
-            )
-        )
-
-    if age_flags:
-        # is_over_18/21 are hybrid properties derived from date_of_birth, not
-        # columns, so they can't be filtered in SQL. Handled by the caller
-        # after the rows load — see filter_age_flags.
-        pass
-
-    if shifts:
-        # "trackId:shiftId", or "trackId:__any__" for "free at some point on
-        # that track". The track travels with the shift so the modal can
-        # rebuild its track chips from the URL without a second lookup.
-        shift_ids: set[int] = set()
-        any_tracks: set[int] = set()
-        for track_id, value in _split_pairs(shifts):
-            if value == ANY and track_id.isdigit():
-                any_tracks.add(int(track_id))
-            elif value.isdigit():
-                shift_ids.add(int(value))
-        if any_tracks and tournament is not None:
-            shift_ids |= _shift_ids_on_tracks(query.session, tournament, any_tracks)
-        if shift_ids:
-            query = query.filter(
-                exists().where(
-                    (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
-                    & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
-                )
-            )
-
-    if assigned:
-        # "trackId:assigned|unassigned", per track like track status — "who's
-        # unassigned for Day 1" is the question. ANY (an unnarrowed chip) and
-        # both values on one track narrow nothing.
-        clauses = []
-        for track_id, value in _split_pairs(assigned):
-            if not track_id.isdigit():
-                continue
-            staffed = exists().where(
                 (TournamentTrackAssignment.membership_id == TournamentMembership.id)
-                & (TournamentTrackAssignment.tournament_track_id == int(track_id))
+                & TournamentTrackAssignment.role_id.in_(any_scope)
             )
-            if value == "assigned":
-                clauses.append(staffed)
-            elif value == "unassigned":
-                clauses.append(~staffed)
-            elif value == ANY:
-                clauses.append(true())
-        if clauses:
-            query = query.filter(or_(*clauses))
+        )
+    for role_id, track_ids in by_role.items():
+        # An unnarrowed value for the same role already covers every track.
+        if role_id in any_scope:
+            continue
+        clauses.append(
+            exists().where(
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & (TournamentTrackAssignment.role_id == role_id)
+                & (
+                    TournamentTrackAssignment.tournament_track_id.in_(track_ids)
+                    | TournamentTrackAssignment.is_tournament_wide
+                )
+            )
+        )
+    if NO_ROLES in values:
+        clauses.append(~_holds_a_role())
+    return or_(*clauses) if clauses else None
 
-    # The text the Affiliation column shows, matched without case: one value
-    # covers a student at a school and a non-student working at one by the
-    # same name. Year level is what tells the two apart.
-    names = {value.strip().lower() for value in affiliations or [] if value.strip()}
-    if names:
-        # Aliased so the EXISTS stays correlated on its own User even when the
-        # name search has already joined one into the outer query.
-        user = aliased(User)
-        schools = query.session.query(University.id).filter(
+
+def _holds_a_role():
+    return exists().where(TournamentTrackAssignment.membership_id == TournamentMembership.id)
+
+
+def _tracks_clause(pairs: list[tuple[str, str]]):
+    # The pairing is the point. Filtering by track and by status independently
+    # would match a member confirmed on one track and declined on another,
+    # which is the opposite of what was asked.
+    clauses = [
+        exists().where(
+            (TournamentMembershipTrackStatus.membership_id == TournamentMembership.id)
+            & (TournamentMembershipTrackStatus.track_id == int(track_id))
+            & (true() if status == ANY else TournamentMembershipTrackStatus.status == status)
+        )
+        for track_id, status in pairs
+        if track_id.isdigit()
+    ]
+    return or_(*clauses) if clauses else None
+
+
+def _lunch_values_clause(pairs: list[tuple[str, str]]):
+    clauses = [_lunch_clause(category, value) for category, value in pairs]
+    return or_(*clauses) if clauses else None
+
+
+def _event_preferences_clause(pairs: list[tuple[str, str]]):
+    # An event ranked for one track says nothing about another, so the track
+    # travels with the event. A track's rank condition (see RANK_PREFIX) is
+    # checked on the same row as its events, so "Anatomy ranked < 3" can't be
+    # met by Anatomy unranked plus some other event at 1.
+    events_by_track: dict[int, set[str]] = {}
+    rank_by_track: dict[int, tuple[str, int]] = {}
+    for track_id, right in pairs:
+        if not track_id.isdigit():
+            continue
+        if right.startswith(RANK_PREFIX):
+            op, _, n = right[len(RANK_PREFIX) :].partition(":")
+            if op in RANK_OPS and n.isdigit():
+                rank_by_track[int(track_id)] = (op, int(n))
+        elif right == ANY or right.isdigit():
+            events_by_track.setdefault(int(track_id), set()).add(right)
+
+    clauses = []
+    # A rank alone, with no events picked, means any event at that rank.
+    for track_id in events_by_track.keys() | rank_by_track.keys():
+        events = events_by_track.get(track_id, {ANY})
+        condition = (
+            TournamentMembershipEventPreference.membership_id == TournamentMembership.id
+        ) & (TournamentMembershipEventPreference.track_id == track_id)
+        if ANY not in events:
+            condition &= TournamentMembershipEventPreference.tournament_event_id.in_(
+                [int(event_id) for event_id in events]
+            )
+        if track_id in rank_by_track:
+            op, n = rank_by_track[track_id]
+            # An unranked row's NULL rank fails every comparison.
+            condition &= RANK_OPS[op](TournamentMembershipEventPreference.rank, n)
+        clauses.append(exists().where(condition))
+    return or_(*clauses) if clauses else None
+
+
+def _shifts_clause(session, tournament, pairs: list[tuple[str, str]]):
+    # "trackId:shiftId", or "trackId:__any__" for free at some point on that
+    # track.
+    shift_ids: set[int] = set()
+    any_tracks: set[int] = set()
+    for track_id, value in pairs:
+        if value == ANY and track_id.isdigit():
+            any_tracks.add(int(track_id))
+        elif value.isdigit():
+            shift_ids.add(int(value))
+    if any_tracks:
+        shift_ids |= _shift_ids_on_tracks(session, tournament, any_tracks)
+    if not shift_ids:
+        return None
+    return exists().where(
+        (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
+        & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
+    )
+
+
+def _experience_clause(model, values: list[str] | None):
+    """Experience is the user's, not the membership's, so it joins through
+    user_id. None for `values` asks for any experience at all."""
+    condition = model.user_id == TournamentMembership.user_id
+    if values is not None:
+        event_ids = [int(value) for value in values if value.isdigit()]
+        if not event_ids:
+            return None
+        condition &= model.event_id.in_(event_ids)
+    return exists().where(condition)
+
+
+def _affiliation_clause(session, values: list[str] | None):
+    """The text the Affiliation column shows, matched without case: one value
+    covers a student at a school and a non-student working at one by the same
+    name. None for `values` asks for any affiliation at all."""
+    # Aliased so the EXISTS stays correlated on its own User even when the
+    # name search has already joined one into the outer query.
+    user = aliased(User)
+    if values is None:
+        school = user.university_id.is_not(None)
+        employer = func.coalesce(func.trim(user.employer), "") != ""
+    else:
+        names = {value.strip().lower() for value in values if value.strip()}
+        if not names:
+            return None
+        schools = session.query(University.id).filter(
             func.lower(_university_short_name()).in_(names)
         )
-        query = query.filter(
-            exists().where(
-                (user.id == TournamentMembership.user_id)
-                & or_(
-                    user.student_status.in_(STUDENT_STATUSES) & user.university_id.in_(schools),
-                    (user.student_status == "Non-Student")
-                    & func.lower(func.trim(user.employer)).in_(names),
-                )
-            )
+        school = user.university_id.in_(schools)
+        employer = func.lower(func.trim(user.employer)).in_(names)
+    return exists().where(
+        (user.id == TournamentMembership.user_id)
+        & or_(
+            user.student_status.in_(STUDENT_STATUSES) & school,
+            (user.student_status == "Non-Student") & employer,
         )
+    )
 
-    if year_levels:
-        user = aliased(User)
-        clauses = []
-        for value in year_levels:
-            if value == YEAR_LEVEL_GRADUATE:
-                clauses.append(user.student_status == "Graduate")
-            elif value == YEAR_LEVEL_NON_STUDENT:
-                clauses.append(user.student_status == "Non-Student")
-            elif value.isdigit() and 1 <= int(value) <= MAX_YEAR_LEVEL:
-                year = int(value)
-                clauses.append(
-                    (user.student_status == "Undergraduate")
-                    & (
-                        user.year_level >= year
-                        if year == MAX_YEAR_LEVEL
-                        else user.year_level == year
-                    )
-                )
-        if clauses:
-            query = query.filter(
-                exists().where((user.id == TournamentMembership.user_id) & or_(*clauses))
+
+def _assignments_clause(track: str | None, values: list[str] | None):
+    """Staffed on `track`: on one of the named events, or at all for None."""
+    if not (track and track.isdigit()):
+        return None
+    condition = (TournamentTrackAssignment.membership_id == TournamentMembership.id) & (
+        TournamentTrackAssignment.tournament_track_id == int(track)
+    )
+    if values is not None:
+        event_ids = [int(value) for value in values if value.isdigit()]
+        if not event_ids:
+            return None
+        condition &= TournamentTrackAssignment.tournament_event_id.in_(event_ids)
+    return exists().where(condition)
+
+
+def _year_levels_clause(values: list[str]):
+    user = aliased(User)
+    clauses = []
+    for value in values:
+        if value == YEAR_LEVEL_GRADUATE:
+            clauses.append(user.student_status == "Graduate")
+        elif value == YEAR_LEVEL_NON_STUDENT:
+            clauses.append(user.student_status == "Non-Student")
+        elif value.isdigit() and 1 <= int(value) <= MAX_YEAR_LEVEL:
+            year = int(value)
+            clauses.append(
+                (user.student_status == "Undergraduate")
+                & (user.year_level >= year if year == MAX_YEAR_LEVEL else user.year_level == year)
             )
+    if not clauses:
+        return None
+    return exists().where((user.id == TournamentMembership.user_id) & or_(*clauses))
 
-    return query
+
+# ---------------------------------------------------------------------------
+# Filter conditions
+#
+# The roster's filter is a FilterGroup (see filter_conditions.py). Paired
+# fields name their track or lunch category in `group`; the rest take none.
+# ---------------------------------------------------------------------------
+PAIRED_FIELDS = frozenset({"track", "assigned", "lunch", "event_pref", "shift"})
+_ANY_NONE = frozenset({"any_of", "none_of"})
+_ALL_OPS = _ANY_NONE | {"empty", "not_empty"}
+# "Has every one of", for fields a member can hold several values of at once.
+_MANY_OPS = _ALL_OPS | {"all_of"}
+ROSTER_FIELD_OPS: dict[str, frozenset[str]] = {
+    "role": _MANY_OPS,
+    "track": _ALL_OPS,
+    "assigned": _MANY_OPS,
+    "lunch": _ALL_OPS,
+    "event_pref": _ALL_OPS,
+    "shift": _ALL_OPS,
+    "competition_event": _MANY_OPS,
+    "volunteer_event": _MANY_OPS,
+    "affiliation": _ALL_OPS,
+    "age": _ANY_NONE,
+    "year_level": _ANY_NONE,
+    "onboarding": _ANY_NONE,
+}
+
+
+def roster_condition_problem(condition: FilterCondition) -> str | None:
+    """Why the roster can't apply `condition`, or None if it can."""
+    ops = ROSTER_FIELD_OPS.get(condition.field)
+    if ops is None:
+        return f"Unknown filter '{condition.field}'"
+    if condition.op not in ops:
+        return f"Filter '{condition.field}' does not take '{condition.op}'"
+    if (condition.field in PAIRED_FIELDS) != bool(condition.group):
+        needs = "needs" if condition.field in PAIRED_FIELDS else "takes no"
+        return f"Filter '{condition.field}' {needs} a group"
+    return None
+
+
+class _Context:
+    """What evaluating one filter needs beyond the conditions themselves, with
+    the Python-side matches (age, onboarding) computed at most once."""
+
+    def __init__(self, session, tournament):
+        self.session = session
+        self.tournament = tournament
+        self._members: list[TournamentMembership] | None = None
+        self.paths: dict | None = None
+
+    def _all_members(self) -> list[TournamentMembership]:
+        if self._members is None:
+            self._members = (
+                self.session.query(TournamentMembership)
+                .options(joinedload(TournamentMembership.user))
+                .filter(TournamentMembership.tournament_id == self.tournament.id)
+                .all()
+            )
+        return self._members
+
+    def derived_ids(self, field: str, values: list[str]) -> set[int]:
+        """Age flags and onboarding are derived, not stored, so they're worked
+        out for every member and the matches folded back in as ids."""
+        members = self._all_members()
+        if field == "age":
+            return {m.id for m in filter_age_flags(members, values)}
+        if self.paths is None:
+            self.paths = onboarding_paths(
+                self.session, self.tournament.id, [m.user_id for m in members]
+            )
+        return {m.id for m in filter_onboarding(members, values, self.paths)}
+
+
+def _present_clause(ctx: _Context, field: str, group: str | None):
+    """The member has something for `field` (in `group`, for a paired one)."""
+    if field == "role":
+        return _holds_a_role()
+    if field == "competition_event":
+        return _experience_clause(UserCompetitionExperience, None)
+    if field == "volunteer_event":
+        return _experience_clause(UserVolunteerExperience, None)
+    if field == "affiliation":
+        return _affiliation_clause(ctx.session, None)
+    if field == "assigned":
+        return _assignments_clause(group, None)
+    if field == "lunch":
+        return _lunch_clause(group or "", ANY)
+    if not (group and group.isdigit()):
+        return None
+    track_id = int(group)
+    if field == "track":
+        return exists().where(
+            (TournamentMembershipTrackStatus.membership_id == TournamentMembership.id)
+            & (TournamentMembershipTrackStatus.track_id == track_id)
+        )
+    if field == "event_pref":
+        return exists().where(
+            (TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
+            & (TournamentMembershipEventPreference.track_id == track_id)
+        )
+    if field == "shift":
+        shift_ids = _shift_ids_on_tracks(ctx.session, ctx.tournament, {track_id})
+        return exists().where(
+            (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
+            & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
+        )
+    return None
+
+
+def _values_clause(ctx: _Context, field: str, group: str | None, values: list[str]):
+    """The member matches any of `values`; None when nothing usable was named."""
+    if not values:
+        return None
+    pairs = [(group or "", value) for value in values]
+    match field:
+        case "role":
+            return _roles_clause(values)
+        case "track":
+            return _tracks_clause(pairs)
+        case "lunch":
+            return _lunch_values_clause(pairs)
+        case "event_pref":
+            return _event_preferences_clause(pairs)
+        case "shift":
+            return _shifts_clause(ctx.session, ctx.tournament, pairs)
+        case "assigned":
+            return _assignments_clause(group, values)
+        case "competition_event":
+            return _experience_clause(UserCompetitionExperience, values)
+        case "volunteer_event":
+            return _experience_clause(UserVolunteerExperience, values)
+        case "affiliation":
+            return _affiliation_clause(ctx.session, values)
+        case "year_level":
+            return _year_levels_clause(values)
+        case "age" | "onboarding":
+            return TournamentMembership.id.in_(ctx.derived_ids(field, values))
+    return None
+
+
+def _condition_clause(ctx: _Context, condition: FilterCondition):
+    if roster_condition_problem(condition) is not None:
+        return None
+    if condition.op in ("empty", "not_empty"):
+        present = _present_clause(ctx, condition.field, condition.group)
+        if present is None:
+            return None
+        return ~present if condition.op == "empty" else present
+    if condition.op == "all_of":
+        each = [
+            clause
+            for value in condition.values
+            if (clause := _values_clause(ctx, condition.field, condition.group, [value]))
+            is not None
+        ]
+        return and_(*each) if each else None
+    clause = _values_clause(ctx, condition.field, condition.group, condition.values)
+    if clause is None:
+        return None
+    return ~clause if condition.op == "none_of" else clause
+
+
+def _group_clause(ctx: _Context, group: FilterGroup, *, nested: bool = False):
+    if group.op not in FILTER_GROUP_OPS:
+        return None
+    clauses = []
+    for item in group.conditions:
+        if isinstance(item, FilterCondition):
+            clause = _condition_clause(ctx, item)
+        else:
+            clause = None if nested else _group_clause(ctx, item, nested=True)
+        if clause is not None:
+            clauses.append(clause)
+    if not clauses:
+        return None
+    return or_(*clauses) if group.op == "or" else and_(*clauses)
+
+
+def apply_member_filter(query: Query, tournament, group: FilterGroup) -> tuple[Query, dict | None]:
+    """Narrows a TournamentMembership query by a roster filter. Also returns
+    every member's onboarding_paths when an onboarding condition computed
+    them, else None.
+
+    Lenient, like the paired values: a condition the roster can't apply (a
+    field or operator a later release dropped) is skipped rather than failing
+    the load, and a group left with nothing to apply narrows nothing."""
+    ctx = _Context(query.session, tournament)
+    clause = _group_clause(ctx, group)
+    return (query if clause is None else query.filter(clause)), ctx.paths
 
 
 def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
@@ -407,18 +533,18 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
         if membership.age_disclosure != "consented":
             return False
         tournament = membership.tournament
-        if (
-            "over_18" in age_flags
-            and tournament.collect_is_over_18
-            and membership.is_over_18 is True
-        ):
-            return True
-        if (
-            "over_21" in age_flags
-            and tournament.collect_is_over_21
-            and membership.is_over_21 is True
-        ):
-            return True
+        flags = (
+            ("18", tournament.collect_is_over_18, membership.is_over_18),
+            ("21", tournament.collect_is_over_21, membership.is_over_21),
+        )
+        # `is True` / `is False`: an unknown flag is neither over nor under.
+        for age, collected, over in flags:
+            if not collected:
+                continue
+            if f"over_{age}" in age_flags and over is True:
+                return True
+            if f"under_{age}" in age_flags and over is False:
+                return True
         return False
 
     return [m for m in memberships if matches(m)]
@@ -427,8 +553,7 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
 def filter_onboarding(memberships: list, states: list[str], paths: dict) -> list:
     """Keeps members whose onboarding is in one of `states`: "not_started",
     "in_progress" or "complete", given each member's onboarding_paths.
-    Unknown states are dropped, like any malformed filter value (see
-    _split_pairs).
+    Unknown states are dropped, like any unresolvable filter value.
 
     In Python, like filter_age_flags: a member's path depends on which steps
     their roles qualify them for, so there's no stored progress to query. A
@@ -451,10 +576,8 @@ def build_filter_options(db, tournament) -> dict:
     """Everything the roster's filter modal offers, derived from what this
     tournament actually holds.
 
-    Every paired filter comes back as a group (the left half) carrying its
-    own options (the right half), because that's how the modal builds them:
-    add a track / a day / a lunch category / an event-preference question as
-    a chip, then narrow it with that chip's pill.
+    Every paired filter comes back as groups (a track or lunch category),
+    each carrying its own options, since a condition picks its group first.
 
     Sources are the catalogs wherever one exists — tracks, shifts and events
     are authoritative even when nobody has answered about them yet (a track
@@ -506,11 +629,8 @@ def build_filter_options(db, tournament) -> dict:
         .order_by(TournamentTrack.name)
     ]
 
-    # Grouped by track: a track is the unit a TD thinks in ("who's around for
-    # Day 1?"), and shift names repeat across tracks ("Impound" on both days),
-    # so a flat list offers the same label twice with nothing to tell them
-    # apart. Was grouped by day, which couldn't separate two sites running the
-    # same Saturday.
+    # Grouped by track: shift names repeat across tracks ("Impound" on both
+    # days), and two sites can run the same Saturday.
     track_names = {t["value"]: t["label"] for t in tracks}
     shift_days: dict[str, dict] = {}
     for shift in (
@@ -650,6 +770,11 @@ def build_filter_options(db, tournament) -> dict:
         "shift_days": list(shift_days.values()),
         "lunch_categories": lunch_categories,
         "event_preferences": event_preferences,
+        # Per track, the events someone can be assigned to there.
+        "assignments": [
+            {"value": track["value"], "label": track["label"], "options": events_on(track["value"])}
+            for track in tracks
+        ],
         "competition_events": experience_events(UserCompetitionExperience),
         "volunteer_events": experience_events(UserVolunteerExperience),
         "affiliations": [
@@ -746,9 +871,7 @@ def _lunch_groups(db, fields, scoped, unslug, lunch_pattern, free_text_types) ->
             add_option(group, value, value)
 
     for category, group in groups.items():
-        # ANY and LUNCH_UNANSWERED are filterable but deliberately absent
-        # here: the modal offers them as an answered/not-answered toggle
-        # above the list rather than as two more rows in it.
+        # Answered or not is the is-empty / is-not-empty operator, not an option.
         sentinels = []
         # "None" only means something where it's an answer someone can give —
         # a dietary-restrictions question, or a category already holding one.
@@ -779,7 +902,7 @@ def apply_member_search(
 ) -> Query:
     """The identity/authority narrowing the role-assignment pickers need.
 
-    Separate from apply_member_filters because it asks a different kind of
+    Separate from apply_member_filter because it asks a different kind of
     question: that one filters on what a member *answered*, this one on who
     they are and how much authority they hold. Both apply to the same roster
     query — a picker is the roster with a name search and a role bound on it,

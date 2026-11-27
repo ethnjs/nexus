@@ -25,25 +25,14 @@ import {
   RoomTable,
 } from "@/components/tournament/buildings/RoomTable";
 import { EVENT_PANEL_WIDTH, EventPanel } from "@/components/tournament/events/EventPanel";
-import {
-  EVENT_TYPE_OPTIONS,
-  EventsFilterModal,
-  type EventsFilterState,
-  eventBuildingOptions,
-  eventCategoryOptions,
-  eventDivisionOptions,
-  eventPassesFilters,
-  eventShiftOptions,
-  eventsFilterFromStored,
-  eventsFilterToStored,
-  isEventsFilterActive,
-} from "@/components/tournament/events/EventsFilterModal";
+import { eventFilterFields } from "@/components/tournament/events/eventFilterFields";
 import { TrackSummary } from "@/components/tournament/TrackSummary";
 import { Button } from "@/components/ui/Button";
 import { CollapsibleHeader } from "@/components/ui/CollapsibleHeader";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DisplayButton } from "@/components/ui/DisplayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBuilderModal } from "@/components/ui/FilterBuilderModal";
 import { FilterButton } from "@/components/ui/FilterButton";
 import {
   IconBuilding,
@@ -65,6 +54,7 @@ import {
   canonicalEventsApi,
   type DisplayConfig,
   displayConfigApi,
+  type FilterGroup,
   type Role,
   rolesApi,
   type TournamentBuilding,
@@ -78,6 +68,9 @@ import {
 import { BUILDINGS_EVENTS } from "@/lib/displayConfigSurfaces";
 import { eventNameWithDivision, trackLocationLabel } from "@/lib/eventDisplay";
 import { trackDetail, withTrackDetail } from "@/lib/eventTrackDetails";
+import { matchesFilter } from "@/lib/filters/match";
+import { countActiveConditions, emptyFilter, fieldMap } from "@/lib/filters/model";
+import { useSavedFilters } from "@/lib/filters/useSavedFilters";
 import { persistSurfaceView } from "@/lib/persistSurfaceView";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useAuth } from "@/lib/useAuth";
@@ -255,6 +248,29 @@ export default function BuildingsPage() {
   );
   const hasBuildings = (buildings?.length ?? 0) > 0;
 
+  // The grid's search: a building by name keeps all its rooms; otherwise a
+  // building shows just the rooms matching by name ("RH 210" too) or by an
+  // event placed in them.
+  const [roomQuery, setRoomQuery] = useState("");
+  const shownBuildings = useMemo(() => {
+    const needle = roomQuery.trim().toLowerCase();
+    if (!needle) return onTab.map((building) => ({ building, rooms: building.rooms }));
+    const has = (text: string | null | undefined) => !!text?.toLowerCase().includes(needle);
+    return onTab.flatMap((building) => {
+      if (has(building.name) || has(building.short_name)) {
+        return [{ building, rooms: building.rooms }];
+      }
+      const prefix = building.short_name || building.name;
+      const rooms = building.rooms.filter(
+        (room) =>
+          has(room.name) ||
+          has(`${prefix} ${room.name}`) ||
+          (eventsByRoom.get(room.id) ?? []).some((e) => has(eventNameWithDivision(e))),
+      );
+      return rooms.length > 0 ? [{ building, rooms }] : [];
+    });
+  }, [onTab, roomQuery, eventsByRoom]);
+
   // ── the docked event list ─────────────────────────────────────────────
   // Each day tab keeps its own card fields and filters ("buildings_events:track:3").
   const [displayConfig, setDisplayConfig] = useState<DisplayConfig | null>(null);
@@ -277,10 +293,24 @@ export default function BuildingsPage() {
       ),
     [saved],
   );
-  const filters = useMemo(() => eventsFilterFromStored(saved?.filters), [saved]);
-  const filterActive = isEventsFilterActive(filters);
+  const filter = saved?.filter ?? null;
+  const filterActive = countActiveConditions(filter) > 0;
+  // Named filters are shared by every day tab; the applied one is per tab.
+  const savedFilters = useSavedFilters(BUILDINGS_EVENTS, tournamentId);
+  // This tab's track only, so shift and location need no track picked, and
+  // no Track or Staffing field: the tab is the track, and assignments
+  // aren't loaded here.
+  const filterFields = useMemo(
+    () =>
+      eventFilterFields(dayEvents, {
+        showsTrack: (id) => id === activeTrackId,
+        withTracks: false,
+      }),
+    [dayEvents, activeTrackId],
+  );
+  const filterFieldMap = useMemo(() => fieldMap(filterFields), [filterFields]);
 
-  function saveView(patch: { hidden?: string[]; filters?: Record<string, string[]> }) {
+  function saveView(patch: { hidden?: string[]; filter?: FilterGroup }) {
     setDisplayConfig((cur) => ({
       ...cur,
       [surface]: { ...{ hidden: [] }, ...cur?.[surface], ...patch },
@@ -289,8 +319,7 @@ export default function BuildingsPage() {
   }
   const applyHidden = (next: Set<EventCardField>) =>
     saveView({ hidden: [...next].map((id) => `${EVENT_FIELD_PREFIX}${id}`) });
-  const applyFilters = (next: EventsFilterState) =>
-    saveView({ filters: eventsFilterToStored(next) });
+  const applyFilter = (next: FilterGroup) => saveView({ filter: next });
 
   const [query, setQuery] = useState("");
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -299,18 +328,12 @@ export default function BuildingsPage() {
   const listed = useMemo(() => {
     if (activeTrackId === null) return [];
     const needle = query.trim().toLowerCase();
-    const ctx = {
-      // Assignments aren't loaded here; the staffing filter is hidden.
-      assignmentsFor: () => [],
-      showsTrack: (id: number) => id === activeTrackId,
-      trackOverride: new Set([String(activeTrackId)]),
-    };
     return dayEvents.filter(
       (e) =>
         eventNameWithDivision(e).toLowerCase().includes(needle) &&
-        eventPassesFilters(e, filters, ctx),
+        matchesFilter(e, filter, filterFieldMap),
     );
-  }, [dayEvents, query, filters, activeTrackId]);
+  }, [dayEvents, query, filter, filterFieldMap, activeTrackId]);
 
   // ── the event panel ───────────────────────────────────────────────────
   const [focusedEventId, setFocusedEventId] = useState<number | null>(useInitialPanelId("event"));
@@ -363,9 +386,12 @@ export default function BuildingsPage() {
               size="sm"
               iconOnly
               label="Filter events"
-              active={filterActive}
+              count={countActiveConditions(filter)}
               onOpen={() => setShowFilterModal(true)}
-              onClear={() => applyFilters(eventsFilterFromStored(null))}
+              onClear={() => applyFilter(emptyFilter())}
+              saved={savedFilters}
+              applied={filter ?? emptyFilter()}
+              onApplySaved={applyFilter}
             />
           </>
         }
@@ -399,7 +425,7 @@ export default function BuildingsPage() {
                       variant="secondary"
                       onClick={() => {
                         setQuery("");
-                        applyFilters(eventsFilterFromStored(null));
+                        applyFilter(emptyFilter());
                       }}
                     >
                       Clear filters
@@ -468,7 +494,9 @@ export default function BuildingsPage() {
     listed,
     dayEvents.length,
     query,
+    filter,
     filterActive,
+    savedFilters,
     hiddenFields,
     focusedEvent,
     focusedEventId,
@@ -735,15 +763,6 @@ export default function BuildingsPage() {
               <div style={{ display: "flex", gap: "10px" }}>
                 <Button
                   type="button"
-                  variant={selectMode ? "primary" : "secondary"}
-                  size="md"
-                  onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-                  disabled={onTab.length === 0}
-                >
-                  Select
-                </Button>
-                <Button
-                  type="button"
                   variant="secondary"
                   size="md"
                   onClick={() => setImporting(true)}
@@ -756,6 +775,34 @@ export default function BuildingsPage() {
               </div>
             )}
           </div>
+
+          {onTab.length > 0 && (
+            <div style={{ display: "flex", gap: "10px", marginBottom: "12px" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Input
+                  value={roomQuery}
+                  onChange={(e) => setRoomQuery(e.target.value)}
+                  onClear={() => setRoomQuery("")}
+                  placeholder="Search buildings, rooms, events"
+                  icon={<IconSearch size={14} />}
+                  size="md"
+                  variant="secondary"
+                  font="sans"
+                  fullWidth
+                />
+              </div>
+              {!isArchived && (
+                <Button
+                  type="button"
+                  variant={selectMode ? "primary" : "secondary"}
+                  size="md"
+                  onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                >
+                  Select
+                </Button>
+              )}
+            </div>
+          )}
 
           {onTab.length === 0 &&
             (hasBuildings ? (
@@ -798,9 +845,23 @@ export default function BuildingsPage() {
               />
             ))}
 
-          {onTab.length > 0 && (
+          {onTab.length > 0 && shownBuildings.length === 0 && (
+            <EmptyState
+              card
+              icon={<IconSearch size={24} />}
+              title="Nothing matches"
+              description="No building, room or placed event matches your search."
+              action={
+                <Button size="sm" variant="secondary" onClick={() => setRoomQuery("")}>
+                  Clear search
+                </Button>
+              }
+            />
+          )}
+
+          {shownBuildings.length > 0 && (
             <MasonryGrid minColumnWidth={460} gap={16}>
-              {onTab.map((building) => (
+              {shownBuildings.map(({ building, rooms }) => (
                 <BuildingSection
                   key={building.id}
                   building={building}
@@ -829,7 +890,7 @@ export default function BuildingsPage() {
                       ) : undefined;
                     })()}
                     onPendingCancel={() => setPendingDrop(null)}
-                    rooms={building.rooms}
+                    rooms={rooms}
                     locked={isArchived}
                     selectMode={selectMode}
                     selectedIds={selectedRoomIds}
@@ -912,15 +973,12 @@ export default function BuildingsPage() {
       )}
 
       {showFilterModal && (
-        <EventsFilterModal
-          divisionOptions={eventDivisionOptions(dayEvents)}
-          typeOptions={EVENT_TYPE_OPTIONS}
-          categoryOptions={eventCategoryOptions(dayEvents)}
-          buildingOptions={eventBuildingOptions(dayEvents)}
-          shiftOptions={eventShiftOptions(dayEvents)}
-          showStaffing={false}
-          filters={filters}
-          onApply={applyFilters}
+        <FilterBuilderModal
+          title="Filter events"
+          fields={filterFields}
+          filter={filter ?? emptyFilter()}
+          saved={savedFilters}
+          onApply={applyFilter}
           onClose={() => setShowFilterModal(false)}
         />
       )}

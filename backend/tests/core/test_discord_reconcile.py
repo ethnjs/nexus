@@ -1,13 +1,21 @@
 """The sync: marks claimed by the drain and reconciled against the in-memory Discord server, after
 a real build of the shared test server (tests/core/conftest.py)."""
 
+import asyncio
+import threading
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import event as sa_event
 
 from app.core.discord import events as gateway_events
-from app.core.discord.build import claim_build, run_build
+from app.core.discord.build import (
+    claim_build,
+    claim_sync,
+    refresh_sync,
+    release_sync,
+    run_build,
+)
 from app.core.discord.drain import Syncer, claim_marks
 from app.core.discord.marks import mark_full, mark_member, mark_structure
 from app.core.discord.sweep import mark_all_full
@@ -32,7 +40,7 @@ from app.models.models import (
     utcnow,
 )
 from app.services.discord.permissions import POSTING, STAFF_OVERWRITE, VIEW_CHANNEL
-from app.services.discord.rest import GUILD_CATEGORY, ROLE_OVERWRITE
+from app.services.discord.rest import GUILD_CATEGORY, ROLE_OVERWRITE, DiscordWaitTooLong
 from tests.conftest import grant_role
 from tests.core.conftest import GUILD_ID
 
@@ -745,6 +753,29 @@ class TestDrain:
         db.refresh(built)
         assert built.sync_started_at is None
 
+    async def test_a_structure_sync_reading_a_rate_limited_server_keeps_its_claim(
+        self, db, built, scope, mock_discord_rest, monkeypatch
+    ):
+        from app.core.discord import build as build_module
+
+        monkeypatch.setattr(build_module, "HEARTBEAT_SECONDS", 0)
+        # The test's one session can't take a heartbeat's write from another thread mid-read.
+        beat = threading.Event()
+        monkeypatch.setattr(build_module, "refresh_sync", lambda db, claim: beat.set())
+        real = mock_discord_rest.channels
+
+        async def rate_limited(guild_id):
+            assert await asyncio.to_thread(beat.wait, 5), "no heartbeat came"
+            return await real(guild_id)
+
+        monkeypatch.setattr(mock_discord_rest, "channels", rate_limited)
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_error is None
+        assert _marks(db) == []
+
     async def test_failures_back_off_and_are_reported(
         self, db, built, scope, mock_discord_rest, monkeypatch
     ):
@@ -800,6 +831,197 @@ class TestDrain:
         db.refresh(built)
         assert built.last_sync_error is None
         assert _marks(db) == []
+
+    def _two_runners(self, db, guild, td_tournament, track_id: int) -> None:
+        for discord_id in (6101, 6102):
+            volunteer = _user(db, f"runner{discord_id}@test.com", discord_id)
+            guild.join(discord_id)
+            grant_role(db, td_tournament, volunteer, "Runner", track_id=track_id)
+
+    @pytest.mark.parametrize("kinds", [("full",), ("structure", "member")])
+    async def test_one_failing_member_doesnt_stop_the_others(
+        self, db, built, guild, scope, td_tournament, mock_discord_rest, monkeypatch, kinds
+    ):
+        self._two_runners(db, guild, td_tournament, built.track_id)
+        add = mock_discord_rest.add_member_role
+
+        async def refuse_the_first(guild_id, user_id, role_id):
+            if user_id == 6101:
+                raise RuntimeError("Missing Permissions")
+            await add(guild_id, user_id, role_id)
+
+        monkeypatch.setattr(mock_discord_rest, "add_member_role", refuse_the_first)
+        if "full" in kinds:
+            mark_full(db, built.id)
+        else:
+            mark_structure(db, built.id)
+            mark_member(db, built.id, 6101)
+            mark_member(db, built.id, 6102)
+        db.commit()
+        await _sync(scope)
+        assert guild.member_role_names(6101) == set()
+        assert guild.member_role_names(6102) == {"Verified", "Runner"}
+        db.refresh(built)
+        assert built.last_sync_error == "Missing Permissions"
+        assert {m.attempts for m in db.query(DiscordSyncMark)} == {1}
+
+    async def test_a_long_rate_limit_wait_stops_the_sync_at_once(
+        self, db, built, guild, scope, td_tournament, mock_discord_rest, monkeypatch
+    ):
+        self._two_runners(db, guild, td_tournament, built.track_id)
+        tried: list[int] = []
+
+        async def rate_limited(guild_id, user_id, role_id):
+            tried.append(user_id)
+            raise DiscordWaitTooLong()
+
+        monkeypatch.setattr(mock_discord_rest, "add_member_role", rate_limited)
+        mark_full(db, built.id)
+        db.commit()
+        await _sync(scope)
+        assert tried == [6101]
+        db.refresh(built)
+        assert built.last_sync_error == str(DiscordWaitTooLong())
+
+    async def test_a_long_rate_limit_wait_backs_off_every_member_mark_at_once(
+        self, db, built, guild, scope, td_tournament, mock_discord_rest, monkeypatch
+    ):
+        self._two_runners(db, guild, td_tournament, built.track_id)
+        tried: list[int] = []
+
+        async def rate_limited(guild_id, user_id, role_id):
+            tried.append(user_id)
+            raise DiscordWaitTooLong()
+
+        monkeypatch.setattr(mock_discord_rest, "add_member_role", rate_limited)
+        mark_member(db, built.id, 6101)
+        mark_member(db, built.id, 6102)
+        db.commit()
+        await _sync(scope)
+        assert tried == [6101]
+        assert {m.attempts for m in db.query(DiscordSyncMark)} == {1}
+        db.refresh(built)
+        assert built.last_sync_error == str(DiscordWaitTooLong())
+
+
+class HeldSyncer(Syncer):
+    """Records each server's sync without calling Discord. The `held` server's sync waits until
+    `release` is set, like one waiting out a rate limit."""
+
+    def __init__(self, scope, held: int, **kwargs) -> None:
+        super().__init__(scope, **kwargs)
+        self.held = held
+        self.release = asyncio.Event()
+        self.started: list[int] = []
+        self.finished: list[int] = []
+
+    async def sync_link(self, link_id, marks, claimed_at) -> None:
+        self.started.append(link_id)
+        if link_id == self.held:
+            await self.release.wait()
+        self.finished.append(link_id)
+
+
+async def _let_tasks_run() -> None:
+    for _ in range(10):
+        await asyncio.sleep(0)
+
+
+class TestConcurrency:
+    @pytest.fixture
+    def other(self, db, link, td_tournament) -> DiscordGuildLink:
+        """A second server, on another track, both with a due mark."""
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+        db.add(track)
+        db.flush()
+        other = DiscordGuildLink(
+            tournament_id=td_tournament.id, track_id=track.id, guild_id=GUILD_ID + 1
+        )
+        db.add(other)
+        db.flush()
+        mark_member(db, link.id, 1)
+        mark_member(db, other.id, 1)
+        db.commit()
+        return other
+
+    async def test_a_server_waiting_on_discord_doesnt_hold_up_the_others(self, link, other, scope):
+        syncer = HeldSyncer(scope, held=link.id)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        assert syncer.finished == [other.id]
+        syncer.release.set()
+        await syncer.run_pending()
+        assert syncer.finished == [other.id, link.id]
+
+    async def test_at_most_max_servers_sync_at_once(self, link, other, scope):
+        syncer = HeldSyncer(scope, held=link.id, max_servers=1)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        assert syncer.started == [link.id]
+        syncer.release.set()
+        await syncer.run_pending()
+        assert syncer.started == [link.id, other.id]
+
+    async def test_a_server_never_has_two_syncs_at_once(self, db, link, scope):
+        mark_member(db, link.id, 1)
+        db.commit()
+        syncer = HeldSyncer(scope, held=link.id)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        mark_member(db, link.id, 2)
+        db.commit()
+        await syncer.start_pending()
+        await _let_tasks_run()
+        assert syncer.started == [link.id]
+
+        # The mark written meanwhile waits for the first sync, then gets its own.
+        syncer.release.set()
+        await _let_tasks_run()
+        await syncer.run_pending()
+        assert syncer.started == [link.id, link.id]
+
+    async def test_stopping_cancels_running_syncs(self, db, link, scope):
+        mark_member(db, link.id, 1)
+        db.commit()
+        syncer = HeldSyncer(scope, held=link.id)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        await syncer.stop()
+        assert syncer.finished == []
+        # Still leased, so the next leader retries it once the lease runs out.
+        [mark] = db.query(DiscordSyncMark).all()
+        assert mark.next_attempt_at > utcnow()
+
+    async def test_only_one_sync_changes_a_server_at_a_time(self, db, link):
+        claim = claim_sync(db, link.id)
+        assert claim is not None
+        assert not claim_sync(db, link.id)
+        release_sync(db, claim)
+        assert claim_sync(db, link.id)
+
+        # A sync silent for over 2 minutes was interrupted, and its claim is taken over.
+        link.sync_started_at = utcnow() - timedelta(minutes=3)
+        db.commit()
+        assert claim_sync(db, link.id)
+
+    async def test_a_sync_that_lost_its_claim_leaves_the_new_one_alone(self, db, link):
+        quiet = claim_sync(db, link.id)
+        assert quiet is not None
+        # Its last write was 3 minutes ago, so another sync takes over.
+        quiet.at = link.sync_started_at = utcnow() - timedelta(minutes=3)
+        db.commit()
+        current = claim_sync(db, link.id)
+        assert current is not None
+
+        refresh_sync(db, quiet)
+        release_sync(db, quiet)
+        db.refresh(link)
+        assert link.sync_started_at == current.at
+        assert not claim_build(db, link.id)
+
+        refresh_sync(db, current)
+        release_sync(db, current)
+        assert claim_build(db, link.id)
 
 
 class TestGatewayEvents:

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth import get_current_user
@@ -30,11 +31,9 @@ from app.core.tournament.field_groups import (
     wants,
 )
 from app.core.tournament.member_filters import (
-    apply_member_filters,
+    apply_member_filter,
     apply_member_search,
     build_filter_options,
-    filter_age_flags,
-    filter_onboarding,
 )
 from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.memberships import (
@@ -49,7 +48,7 @@ from app.core.tournament.memberships import (
     onboarding_reads,
     resolve_person_refs,
 )
-from app.core.tournament.onboarding import needs_tournament_onboarding, onboarding_paths
+from app.core.tournament.onboarding import needs_tournament_onboarding
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS,
     get_user_permissions,
@@ -62,6 +61,7 @@ from app.models.models import (
     TournamentMembership,
     User,
 )
+from app.schemas.tournament.display_config import FilterGroup
 from app.schemas.tournament.member_summary import MemberSummaryResponse
 from app.schemas.tournament.membership import (
     AgeDisclosureRequest,
@@ -179,27 +179,8 @@ def list_memberships(
     surface: str | None = Query(default=None),
     # Omitted means everything, or what `surface` implies (see resolve_fields).
     requested: frozenset[str] | None = Depends(field_selection),
-    # Roster filters. Repeatable; different filters AND, values within one OR.
-    # The paired ones ("2:confirmed", "protein:Sofritas", "2027-02-13:47")
-    # keep the two halves together on purpose, and take "__any__" on the
-    # right for "any status / any shift that day / answered at all" — see
-    # apply_member_filters.
-    role: list[str] = Query(default=[]),
-    track: list[str] = Query(default=[]),
-    lunch: list[str] = Query(default=[]),
-    event_pref: list[str] = Query(default=[]),
-    competition_event: list[int] = Query(default=[]),
-    volunteer_event: list[int] = Query(default=[]),
-    age: list[str] = Query(default=[]),
-    shift: list[str] = Query(default=[]),
-    # "trackId:assigned|unassigned" — staffed on that track or not.
-    assigned: list[str] = Query(default=[]),
-    # A school's short name or an employer, as the column shows it; and
-    # "1".."5", "graduate", "non_student".
-    affiliation: list[str] = Query(default=[]),
-    year_level: list[str] = Query(default=[]),
-    # "not_started", "in_progress", "complete".
-    onboarding: list[str] = Query(default=[]),
+    # The roster filter: a FilterGroup as JSON (see apply_member_filter).
+    filter_json: str | None = Query(default=None, alias="filter"),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -225,21 +206,15 @@ def list_memberships(
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
     )
-    query = apply_member_filters(
-        query,
-        tournament=tournament,
-        roles=role,
-        tracks=track,
-        lunch=lunch,
-        event_preferences=event_pref,
-        competition_events=competition_event,
-        volunteer_events=volunteer_event,
-        age_flags=age,
-        shifts=shift,
-        assigned=assigned,
-        affiliations=affiliation,
-        year_levels=year_level,
-    )
+    paths = None
+    if filter_json is not None:
+        try:
+            member_filter = FilterGroup.model_validate_json(filter_json)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Malformed filter"
+            ) from exc
+        query, paths = apply_member_filter(query, tournament, member_filter)
     query = apply_member_search(
         query,
         db,
@@ -249,13 +224,6 @@ def list_memberships(
         max_rank=max_rank,
     )
     memberships = query.order_by(TournamentMembership.id).all()
-    # Age flags and onboarding are derived, not stored, so they can't be part
-    # of the query.
-    memberships = filter_age_flags(memberships, age)
-    paths = None
-    if onboarding:
-        paths = onboarding_paths(db, tournament_id, [m.user_id for m in memberships])
-        memberships = filter_onboarding(memberships, onboarding, paths)
     exclude = dump_exclude(requested)
     responses = [validate_requested(MembershipFullResponse, m, exclude) for m in memberships]
     if wants(requested, MEMBERSHIP):

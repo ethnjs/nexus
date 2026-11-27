@@ -34,6 +34,8 @@ const weekdayName = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 export const CALENDAR_PROPS = {
   showOutsideDays: true,
   animate: true,
+  // Most recent year first in the year dropdown.
+  reverseYears: true,
   classNames: {
     root: styles.root,
     months: styles.months,
