@@ -853,6 +853,26 @@ class TestDrain:
         db.refresh(built)
         assert built.last_sync_error == str(DiscordWaitTooLong())
 
+    async def test_a_long_rate_limit_wait_backs_off_every_member_mark_at_once(
+        self, db, built, guild, scope, td_tournament, mock_discord_rest, monkeypatch
+    ):
+        self._two_runners(db, guild, td_tournament, built.track_id)
+        tried: list[int] = []
+
+        async def rate_limited(guild_id, user_id, role_id):
+            tried.append(user_id)
+            raise DiscordWaitTooLong()
+
+        monkeypatch.setattr(mock_discord_rest, "add_member_role", rate_limited)
+        mark_member(db, built.id, 6101)
+        mark_member(db, built.id, 6102)
+        db.commit()
+        await _sync(scope)
+        assert tried == [6101]
+        assert {m.attempts for m in db.query(DiscordSyncMark)} == {1}
+        db.refresh(built)
+        assert built.last_sync_error == str(DiscordWaitTooLong())
+
 
 class HeldSyncer(Syncer):
     """Records each server's sync without calling Discord. The `held` server's sync waits until

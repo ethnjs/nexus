@@ -226,7 +226,7 @@ class Syncer:
             await self._in_db(lambda db: _fail(db, link_id, marks, error))
             return
         rest = discord_rest.get_rest()
-        for mark in marks:
+        for i, mark in enumerate(marks):
             assert mark.discord_user_id is not None
             try:
                 member = await rest.member(snapshot.guild_id, mark.discord_user_id)
@@ -234,6 +234,12 @@ class Syncer:
                 if member is not None:
                     wanted = desired.get(mark.discord_user_id)
                     await apply_member(rest, snapshot, live, member, wanted, above_bot)
+            except discord_rest.DiscordWaitTooLong as exc:
+                # Every later member would wait too, so they all back off with this one.
+                log.warning("Discord member sync for link %s stopped: %s", link_id, exc)
+                failed.extend(marks[i:])
+                errors.append(exc)
+                break
             except Exception as exc:
                 log.exception("Discord member sync for link %s failed", link_id)
                 failed.append(mark)
