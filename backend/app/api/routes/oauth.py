@@ -40,6 +40,7 @@ from app.db.session import get_db
 from app.models.models import OAuthIdentity, OAuthProvider
 from app.services.discord import oauth as discord_oauth
 from app.services.email_service import (
+    send_discord_linked_notice,
     send_identity_linked_notice,
     send_in_background,
     send_sign_in_code_email,
@@ -242,6 +243,7 @@ def discord_start(
 @router.get("/auth/oauth/discord/callback/", dependencies=[Depends(require_discord_enabled)])
 def discord_callback(
     request: Request,
+    background_tasks: BackgroundTasks,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -276,6 +278,9 @@ def discord_callback(
         # link_identity commits the link itself, so the marks follow in their own commit.
         mark_account_everywhere(db, session_row.user_id, int(account_id))
         db.commit()
+        send_in_background(
+            background_tasks, send_discord_linked_notice, session_row.user.email, username
+        )
     except IdentityLinkError as exc:
         own = (
             db.query(OAuthIdentity)

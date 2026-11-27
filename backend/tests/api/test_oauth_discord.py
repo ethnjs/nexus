@@ -105,7 +105,7 @@ class TestDiscordStart:
 
 class TestDiscordCallback:
     def test_links_and_returns_to_connect_page(
-        self, client, db, discord_on, td_user, mock_discord_http
+        self, client, db, discord_on, td_user, mock_discord_http, mock_send_email
     ):
         login(client, "td@test.com", "tdpass")
         res = _link(client, mock_discord_http)
@@ -115,6 +115,9 @@ class TestDiscordCallback:
         assert identity.provider_account_id == "111"
         assert identity.username_at_provider == "tdhandle"
         assert identity.email_at_provider is None
+        assert mock_send_email.await_count == 1
+        assert mock_send_email.call_args.args[0] == "td@test.com"
+        assert "Discord was connected" in mock_send_email.call_args.args[1]
 
     def test_returns_to_safe_redirect(self, client, db, discord_on, td_user, mock_discord_http):
         login(client, "td@test.com", "tdpass")
@@ -151,7 +154,7 @@ class TestDiscordCallback:
         assert identity.provider_account_id == "first"
 
     def test_relinking_the_same_account_succeeds(
-        self, client, db, discord_on, td_user, mock_discord_http
+        self, client, db, discord_on, td_user, mock_discord_http, mock_send_email
     ):
         _add_identity(db, td_user, account_id="111", username="oldname")
         login(client, "td@test.com", "tdpass")
@@ -159,6 +162,7 @@ class TestDiscordCallback:
         assert res.headers["location"].endswith("/connect/discord?linked=discord")
         identity = db.query(OAuthIdentity).filter_by(user_id=td_user.id).one()
         assert identity.username_at_provider == "newname"
+        assert mock_send_email.await_count == 0
 
     def test_google_identity_does_not_block_discord(
         self, client, db, discord_on, td_user, mock_discord_http

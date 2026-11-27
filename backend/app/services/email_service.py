@@ -398,6 +398,24 @@ async def send_identity_linked_notice(to: str, provider_email: str | None) -> No
     )
 
 
+async def send_discord_linked_notice(to: str, username: str | None) -> None:
+    account = f"The Discord account {username}" if username else "A Discord account"
+    await _send_email(
+        to,
+        _Email(
+            subject="Discord was connected to your NEXUS account",
+            heading="Discord was connected to your account",
+            paragraphs=[
+                f"{account} is now linked to your NEXUS account, and gets your roles and channels in your tournaments' Discord servers.",
+                "If you didn't do this, secure your account and disconnect Discord.",
+            ],
+            cta_label="Review security settings",
+            cta_url=_cta_url("/settings/security"),
+            footnote=_CONTACT_SUPPORT,
+        ),
+    )
+
+
 async def send_identity_unlinked_notice(to: str, provider_email: str | None) -> None:
     await _send_email(
         to,

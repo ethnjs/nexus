@@ -37,6 +37,7 @@ NEXUS links tournament Discord servers to tracks and keeps their roles and chann
 
 - Discord OAuth with scope `identify` links accounts; it never signs anyone in. The access token is used once, in the callback, and never stored. The link is an `oauth_identities` row with `provider='discord'` and the Discord user id in `provider_account_id`.
 - One Discord account per NEXUS account and the reverse, both unique constraints. Relinking the account you already have succeeds and refreshes the stored username.
+- A new link emails the account owner (`send_discord_linked_notice`), as linking Google does: a stolen session could otherwise attach an attacker's Discord, which keeps the victim's roles and staff channels after they sign out everywhere. Relinking sends nothing.
 - `/connect/discord` is where lobot's link buttons point: it signs you in if needed, then goes straight to Discord.
 - Unlinking (Settings → Security) needs no password, since Discord can't sign in.
 
