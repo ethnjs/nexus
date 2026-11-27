@@ -3,8 +3,8 @@
 
 import pytest
 
-from app.models.models import SeasonEvent
-from tests.conftest import login
+from app.models.models import SeasonEvent, TournamentTrack
+from tests.conftest import login, primary_track_id
 
 
 def _login_admin(client):
@@ -207,7 +207,31 @@ def test_load_defaults_only_pulls_supported_divisions(
     data = response.json()
     assert len(data["created"]) == 1
     assert data["created"][0]["event_id"] == e_c.id
+    # A single-track tournament's events land on its track.
+    assert [t["id"] for t in data["created"][0]["tracks"]] == [
+        primary_track_id(db, td_tournament.id)
+    ]
     assert data["skipped"] == []
+
+
+def test_load_defaults_leaves_events_off_track_with_several_tracks(
+    client, td_user, td_tournament, db, event_factory, event_category
+):
+    e_c = event_factory(event_category, name="Boomilever")
+    db.add_all(
+        [
+            SeasonEvent(
+                event_id=e_c.id, year=td_tournament.season_year, division="C", is_active=True
+            ),
+            TournamentTrack(tournament_id=td_tournament.id, name="Test Writing"),
+        ]
+    )
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/events/load-defaults/")
+    assert response.status_code == 201
+    assert response.json()["created"][0]["tracks"] == []
 
 
 def test_load_defaults_skips_already_loaded(

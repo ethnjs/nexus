@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
 import { Badge } from "@/components/ui/Badge";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
@@ -37,6 +38,8 @@ export function TrackFields({
   locked,
   onChange,
   showPrimaryToggle = true,
+  layout = "stack",
+  last = false,
 }: {
   draft: TrackDraft;
   errors: Record<string, string>;
@@ -48,168 +51,210 @@ export function TrackFields({
    *  day — the backend refuses to leave a tournament without one, so the
    *  toggle would offer an action that can only 409. */
   showPrimaryToggle?: boolean;
+  /** `settings` gives each field its own SettingsRow, for a settings card. */
+  layout?: "stack" | "settings";
+  /** In the settings layout, drops the final row's bottom border. */
+  last?: boolean;
 }) {
   const today = todayLocalDateString();
+  const asRows = layout === "settings";
+
+  const dates = (
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      {/* TBD keeps the field in place reading "TBD" rather than removing
+          it, so the row doesn't reflow and the TD sees what the track will say. */}
+      <DateRangePicker
+        label={asRows ? undefined : "Dates"}
+        aria-label="Dates"
+        required
+        fullWidth
+        locked={locked || draft.dates_tbd}
+        min={today}
+        from={draft.dates_tbd ? "" : draft.start_date}
+        to={draft.dates_tbd ? "" : draft.end_date}
+        placeholder={draft.dates_tbd ? TBD : "Pick dates"}
+        onChange={(from, to) => onChange({ start_date: from, end_date: to })}
+        error={errors.start_date ?? errors.end_date}
+      />
+      <TbdCheckbox
+        label="Date not decided yet"
+        checked={draft.dates_tbd}
+        locked={locked}
+        // Clearing the dates is the point: TBD is stored as their
+        // absence, so leaving stale values behind would save a date the
+        // TD has just said they don't have.
+        onChange={(checked) =>
+          onChange(
+            checked ? { dates_tbd: true, start_date: "", end_date: "" } : { dates_tbd: false },
+          )
+        }
+      />
+    </div>
+  );
+
+  const location = (
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <Combobox
+        label={asRows ? undefined : "Location"}
+        required
+        options={universities}
+        getId={(u) => u.id}
+        getLabel={(u) => u.name}
+        getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
+        value={draft.location_tbd ? TBD : draft.location}
+        onChange={(text, matched) =>
+          onChange({ location: text, university_id: matched?.id ?? null })
+        }
+        placeholder="UCI"
+        font="sans"
+        locked={locked || draft.location_tbd}
+        error={errors.location}
+      />
+      <TbdCheckbox
+        label="Venue not decided yet"
+        checked={draft.location_tbd}
+        locked={locked}
+        onChange={(checked) =>
+          onChange(
+            checked
+              ? { location_tbd: true, location: "", university_id: null }
+              : { location_tbd: false },
+          )
+        }
+      />
+    </div>
+  );
+
+  const division = (
+    <div>
+      {!asRows && (
+        <div
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "11px",
+            fontWeight: 600,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-text-tertiary)",
+            marginBottom: "6px",
+          }}
+        >
+          Division<span style={{ color: "var(--color-danger)" }}> *</span>
+        </div>
+      )}
+      <DivisionButtonGroup
+        options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
+        value={draft.division}
+        onChange={(v) =>
+          onChange({
+            division: draft.division.includes(v as TournamentDivision)
+              ? draft.division.filter((x) => x !== v)
+              : [...draft.division, v as TournamentDivision],
+          })
+        }
+        locked={locked}
+      />
+      {errors.division && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            color: "var(--color-danger)",
+            margin: "6px 0 0",
+          }}
+        >
+          {errors.division}
+        </p>
+      )}
+    </div>
+  );
+
+  const roleDropdown = (value: number | null, set: (id: number | null) => void) => (
+    <Dropdown
+      value={value === null ? NO_DEFAULT_ROLE : String(value)}
+      onChange={(v) => set(v === NO_DEFAULT_ROLE ? null : Number(v))}
+      options={[
+        { value: NO_DEFAULT_ROLE, label: "None" },
+        ...roles.map((r) => ({ value: String(r.id), label: r.label })),
+      ]}
+      locked={locked}
+      size={asRows ? "md" : "sm"}
+      fullWidth={asRows}
+      width={asRows ? undefined : 180}
+    />
+  );
+  const defaultRoleHelper =
+    "The role the assignments board grants when someone is placed on this track with no role picked yet.";
+  const zoneRoleHelper = "The role someone gets when they're added to a zone on this track.";
+  const defaultRole = roleDropdown(draft.default_role_id, (id) =>
+    onChange({ default_role_id: id }),
+  );
+  const zoneRole = roleDropdown(draft.zone_default_role_id, (id) =>
+    onChange({ zone_default_role_id: id }),
+  );
+  const primaryHelper = "Has a date, venue and divisions. Only competition days can have shifts.";
+  const primaryToggle = (
+    <Switch
+      checked={draft.is_primary}
+      onChange={(v) => onChange({ is_primary: v })}
+      locked={locked}
+    />
+  );
+
+  if (asRows) {
+    return (
+      <>
+        {showPrimaryToggle && (
+          <SettingsRow label="Competition day" helper={primaryHelper}>
+            {primaryToggle}
+          </SettingsRow>
+        )}
+        {draft.is_primary && (
+          <>
+            <SettingsRow label="Dates">{dates}</SettingsRow>
+            <SettingsRow label="Location">{location}</SettingsRow>
+            <SettingsRow label="Division">{division}</SettingsRow>
+          </>
+        )}
+        <SettingsRow
+          label="Default role"
+          helper={defaultRoleHelper}
+          last={last && !draft.is_primary}
+        >
+          {defaultRole}
+        </SettingsRow>
+        {draft.is_primary && (
+          <SettingsRow label="Zone role" helper={zoneRoleHelper} last={last}>
+            {zoneRole}
+          </SettingsRow>
+        )}
+      </>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       {showPrimaryToggle && (
-        <FieldRow
-          label="Competition day"
-          helper="Has a date, venue and divisions. Only competition days can have shifts."
-        >
-          <Switch
-            checked={draft.is_primary}
-            onChange={(v) => onChange({ is_primary: v })}
-            locked={locked}
-          />
+        <FieldRow label="Competition day" helper={primaryHelper}>
+          {primaryToggle}
         </FieldRow>
       )}
 
       {draft.is_primary && (
         <>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {/* TBD keeps the field in place reading "TBD" rather than removing
-                it, so the row doesn't reflow and the TD sees what the track will say. */}
-            <DateRangePicker
-              label="Dates"
-              required
-              fullWidth
-              locked={locked || draft.dates_tbd}
-              min={today}
-              from={draft.dates_tbd ? "" : draft.start_date}
-              to={draft.dates_tbd ? "" : draft.end_date}
-              placeholder={draft.dates_tbd ? TBD : "Pick dates"}
-              onChange={(from, to) => onChange({ start_date: from, end_date: to })}
-              error={errors.start_date ?? errors.end_date}
-            />
-            <TbdCheckbox
-              label="Date not decided yet"
-              checked={draft.dates_tbd}
-              locked={locked}
-              // Clearing the dates is the point: TBD is stored as their
-              // absence, so leaving stale values behind would save a date the
-              // TD has just said they don't have.
-              onChange={(checked) =>
-                onChange(
-                  checked
-                    ? { dates_tbd: true, start_date: "", end_date: "" }
-                    : { dates_tbd: false },
-                )
-              }
-            />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <Combobox
-              label="Location"
-              required
-              options={universities}
-              getId={(u) => u.id}
-              getLabel={(u) => u.name}
-              getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
-              value={draft.location_tbd ? TBD : draft.location}
-              onChange={(text, matched) =>
-                onChange({ location: text, university_id: matched?.id ?? null })
-              }
-              placeholder="UCI"
-              font="sans"
-              locked={locked || draft.location_tbd}
-              error={errors.location}
-            />
-            <TbdCheckbox
-              label="Venue not decided yet"
-              checked={draft.location_tbd}
-              locked={locked}
-              onChange={(checked) =>
-                onChange(
-                  checked
-                    ? { location_tbd: true, location: "", university_id: null }
-                    : { location_tbd: false },
-                )
-              }
-            />
-          </div>
-          <div>
-            <div
-              style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "11px",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.07em",
-                color: "var(--color-text-tertiary)",
-                marginBottom: "6px",
-              }}
-            >
-              Division<span style={{ color: "var(--color-danger)" }}> *</span>
-            </div>
-            <DivisionButtonGroup
-              options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
-              value={draft.division}
-              onChange={(v) =>
-                onChange({
-                  division: draft.division.includes(v as TournamentDivision)
-                    ? draft.division.filter((x) => x !== v)
-                    : [...draft.division, v as TournamentDivision],
-                })
-              }
-              locked={locked}
-            />
-            {errors.division && (
-              <p
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "12px",
-                  color: "var(--color-danger)",
-                  margin: "6px 0 0",
-                }}
-              >
-                {errors.division}
-              </p>
-            )}
-          </div>
+          {dates}
+          {location}
+          {division}
         </>
       )}
 
-      <FieldRow
-        label="Default role"
-        helper="The role the assignments board grants when someone is placed on this track with no role picked yet."
-      >
-        <Dropdown
-          value={draft.default_role_id === null ? NO_DEFAULT_ROLE : String(draft.default_role_id)}
-          onChange={(v) => onChange({ default_role_id: v === NO_DEFAULT_ROLE ? null : Number(v) })}
-          options={[
-            { value: NO_DEFAULT_ROLE, label: "None" },
-            ...roles.map((r) => ({ value: String(r.id), label: r.label })),
-          ]}
-          locked={locked}
-          size="sm"
-          width={180}
-        />
+      <FieldRow label="Default role" helper={defaultRoleHelper}>
+        {defaultRole}
       </FieldRow>
 
       {draft.is_primary && (
-        <FieldRow
-          label="Zone role"
-          helper="The role someone gets when they're added to a zone on this track."
-        >
-          <Dropdown
-            value={
-              draft.zone_default_role_id === null
-                ? NO_DEFAULT_ROLE
-                : String(draft.zone_default_role_id)
-            }
-            onChange={(v) =>
-              onChange({ zone_default_role_id: v === NO_DEFAULT_ROLE ? null : Number(v) })
-            }
-            options={[
-              { value: NO_DEFAULT_ROLE, label: "None" },
-              ...roles.map((r) => ({ value: String(r.id), label: r.label })),
-            ]}
-            locked={locked}
-            size="sm"
-            width={180}
-          />
+        <FieldRow label="Zone role" helper={zoneRoleHelper}>
+          {zoneRole}
         </FieldRow>
       )}
     </div>

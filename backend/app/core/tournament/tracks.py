@@ -35,6 +35,7 @@ from app.core.tournament.audit import TRACK_PURGED, log_action
 from app.models.models import (
     TournamentBuilding,
     TournamentBuildingTrack,
+    TournamentEvent,
     TournamentEventTrack,
     TournamentMembershipTrackStatus,
     TournamentShift,
@@ -210,6 +211,35 @@ def sole_track_name(tournament) -> str:
     return (tournament.short_name or "").strip() or tournament.name
 
 
+def sole_live_track(db: Session, tournament_id: int) -> TournamentTrack | None:
+    """The tournament's one live track, or None when it has several."""
+    live = (
+        db.query(TournamentTrack)
+        .filter(
+            TournamentTrack.tournament_id == tournament_id, TournamentTrack.is_archived.is_(False)
+        )
+        .limit(2)
+        .all()
+    )
+    return live[0] if len(live) == 1 else None
+
+
+def attach_trackless_events(db: Session, tournament_id: int) -> None:
+    """Puts every event on no track onto a single-track tournament's one track.
+
+    That tournament's UI has no track controls, so an event left on no track
+    there (say, its only track was deleted) could never be placed or staffed.
+    Does not commit."""
+    track = sole_live_track(db, tournament_id)
+    if track is None:
+        return
+    trackless = db.query(TournamentEvent.id).filter(
+        TournamentEvent.tournament_id == tournament_id, ~TournamentEvent.track_details.any()
+    )
+    for (event_id,) in trackless:
+        db.add(TournamentEventTrack(tournament_event_id=event_id, track_id=track.id))
+
+
 def sync_sole_track_name(db: Session, tournament) -> None:
     """Names a simple tournament's one track after the tournament.
 
@@ -221,16 +251,10 @@ def sync_sole_track_name(db: Session, tournament) -> None:
     The name is unique per tournament, pending-delete tracks included; if one
     of those holds it, the sole track keeps its name until that one is purged.
     """
-    live = (
-        db.query(TournamentTrack)
-        .filter(
-            TournamentTrack.tournament_id == tournament.id, TournamentTrack.is_archived.is_(False)
-        )
-        .all()
-    )
-    if len(live) != 1:
+    track = sole_live_track(db, tournament.id)
+    if track is None:
         return
-    track, name = live[0], sole_track_name(tournament)
+    name = sole_track_name(tournament)
     if track.name == name:
         return
     taken = (

@@ -234,6 +234,7 @@ export default function GeneralSettingsPage() {
           <SettingsRow label="Name">
             <Input
               fullWidth
+              font="sans"
               charset="alpha"
               locked={isArchived}
               value={draft.name}
@@ -244,6 +245,7 @@ export default function GeneralSettingsPage() {
           <SettingsRow label="Short name">
             <Input
               fullWidth
+              font="sans"
               charset="alpha"
               locked={isArchived}
               value={draft.short_name}
@@ -256,6 +258,7 @@ export default function GeneralSettingsPage() {
               getId={(s) => s}
               getLabel={(s) => s}
               allowFreeText={false}
+              font="sans"
               value={stateText}
               onChange={(text, matched) => {
                 setStateText(text);
@@ -271,6 +274,7 @@ export default function GeneralSettingsPage() {
               getId={(o) => o.value}
               getLabel={(o) => o.label}
               allowFreeText={false}
+              font="sans"
               value={levelText}
               onChange={(text, matched) => {
                 setLevelText(text);
@@ -281,23 +285,19 @@ export default function GeneralSettingsPage() {
             />
           </SettingsRow>
 
-          {/* The sole track's own fields, inline. A one-day tournament has no
-              use for a Tracks list of one row it can never delete, so its
-              when/where/what belongs with the rest of the tournament's
-              details. Same editor and same save path as advanced mode — only
-              the framing differs. */}
+          {/* The sole track's fields sit with the tournament's own details:
+              a Tracks list of one undeletable row would say nothing. */}
           {simpleMode && soleTrack && (
-            <div style={{ padding: "20px 0", borderBottom: "1px solid var(--color-border)" }}>
-              <TrackFields
-                draft={trackEditor.drafts[soleTrack.id] ?? EMPTY_TRACK_DRAFT}
-                errors={trackEditor.errors[soleTrack.id] ?? {}}
-                universities={trackEditor.universities}
-                roles={trackEditor.roles}
-                locked={isArchived}
-                showPrimaryToggle={false}
-                onChange={(updates) => trackEditor.setDraft(soleTrack.id, updates)}
-              />
-            </div>
+            <TrackFields
+              layout="settings"
+              draft={trackEditor.drafts[soleTrack.id] ?? EMPTY_TRACK_DRAFT}
+              errors={trackEditor.errors[soleTrack.id] ?? {}}
+              universities={trackEditor.universities}
+              roles={trackEditor.roles}
+              locked={isArchived}
+              showPrimaryToggle={false}
+              onChange={(updates) => trackEditor.setDraft(soleTrack.id, updates)}
+            />
           )}
 
           {simpleMode && (

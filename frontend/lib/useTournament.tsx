@@ -37,7 +37,13 @@ import {
  * about its own local, unsaved track list mid-edit.
  */
 export function isSimpleMode(tracks: TournamentTrack[] | null | undefined): boolean {
-  return (tracks?.length ?? 0) === 1;
+  return soleTrackOf(tracks) !== null;
+}
+
+/** The list's one track, or null when there are none or several. Works on
+ *  narrowed lists too (competition days only, the tracks a picker offers). */
+export function soleTrackOf(tracks: TournamentTrack[] | null | undefined): TournamentTrack | null {
+  return tracks?.length === 1 ? tracks[0] : null;
 }
 
 interface TournamentContextValue {
@@ -112,7 +118,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         isMultiDay: !!selectedTournament?.is_multi_day,
         tracks,
         isSimple,
-        soleTrack: isSimple ? tracks[0] : null,
+        soleTrack: soleTrackOf(tracks),
         loading,
         refresh,
       }}

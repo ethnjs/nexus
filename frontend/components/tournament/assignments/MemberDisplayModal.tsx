@@ -398,7 +398,7 @@ export function MemberDisplayModal({
     );
 
   return (
-    <Modal title="Configure member cards" onClose={onClose} width={640}>
+    <Modal title="Configure member cards" onClose={onClose} width={640} animateHeight>
       <div
         style={{
           maxHeight: "60vh",

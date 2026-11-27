@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { IconChevronLeft, IconX } from "@/components/ui/Icons";
@@ -27,6 +27,8 @@ interface ModalProps {
   showClose?: boolean;
   /** Controls on the title row's right end, before the × — e.g. a Display button. */
   headerActions?: ReactNode;
+  /** Eases the body's height as its content grows and shrinks. */
+  animateHeight?: boolean;
 }
 
 export function Modal({
@@ -41,6 +43,7 @@ export function Modal({
   onBack,
   showClose = false,
   headerActions,
+  animateHeight = false,
 }: ModalProps) {
   const modalId = useId();
   // Close on Escape key
@@ -173,10 +176,51 @@ export function Modal({
             )}
           </div>
         )}
-        {children}
+        {animateHeight ? <AutoHeight>{children}</AutoHeight> : children}
         {footer && <div style={{ paddingTop: "16px" }}>{footer}</div>}
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * Eases its height to its content's, so rows slide the modal open and shut.
+ * Set on the element directly, from the observer, so the new height lands
+ * before the frame paints: a state update could let the rows spill over the
+ * footer for a frame first.
+ */
+function AutoHeight({ children }: { children: ReactNode }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    let last = inner.offsetHeight;
+    outer.style.height = `${last}px`;
+    const observer = new ResizeObserver(() => {
+      const next = inner.offsetHeight;
+      if (next === last) return;
+      last = next;
+      // Clipped only while it moves, so the rows' own popovers and hover
+      // controls aren't cut off at rest.
+      outer.style.overflow = "hidden";
+      outer.style.height = `${next}px`;
+    });
+    observer.observe(inner);
+    const settle = (e: TransitionEvent) => {
+      if (e.target === outer && e.propertyName === "height") outer.style.overflow = "";
+    };
+    outer.addEventListener("transitionend", settle);
+    return () => {
+      observer.disconnect();
+      outer.removeEventListener("transitionend", settle);
+    };
+  }, []);
+  return (
+    <div ref={outerRef} style={{ transition: "height 200ms cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
+      <div ref={innerRef}>{children}</div>
+    </div>
   );
 }

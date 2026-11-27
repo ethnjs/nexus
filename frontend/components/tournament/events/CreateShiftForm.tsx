@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
-import { soleTrackId, TrackPicker } from "@/components/tournament/TrackPicker";
+import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { TimeRangePicker } from "@/components/ui/TimeRangePicker";
@@ -13,6 +13,7 @@ import {
   tournamentShiftsApi,
 } from "@/lib/api";
 import { fromDayAndTime } from "@/lib/timeFormat";
+import { soleTrackOf } from "@/lib/useTournament";
 
 interface CreateShiftFormProps {
   tournamentId: number;
@@ -23,6 +24,8 @@ interface CreateShiftFormProps {
    * question groups it under.
    */
   tracks: TournamentTrack[];
+  /** Off in a single-track tournament, where the only track is filled in. */
+  showTrack: boolean;
   /** Called once the shift exists on the backend; the caller owns attaching it and closing the popover once that succeeds. May throw/reject — the form shows the error inline and stays open. */
   onCreated: (shift: TournamentShift) => void | Promise<void>;
   onCancel: () => void;
@@ -31,10 +34,11 @@ interface CreateShiftFormProps {
 export function CreateShiftForm({
   tournamentId,
   tracks,
+  showTrack,
   onCreated,
   onCancel,
 }: CreateShiftFormProps) {
-  const [trackId, setTrackId] = useState<number | null>(soleTrackId(tracks));
+  const [trackId, setTrackId] = useState<number | null>(soleTrackOf(tracks)?.id ?? null);
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -60,7 +64,7 @@ export function CreateShiftForm({
       return;
     }
     if (!label.trim() || !resolvedDay || !startTime || !endTime) {
-      setError("Track, day, label, start and end are all required.");
+      setError("Day, label, start and end are all required.");
       return;
     }
     if (endTime <= startTime) {
@@ -96,15 +100,17 @@ export function CreateShiftForm({
         onChange={(e) => setLabel(e.target.value)}
         placeholder="Morning"
       />
-      <TrackPicker
-        label="Track"
-        required
-        size="sm"
-        fullWidth
-        value={trackId}
-        onChange={pickTrack}
-        tracks={tracks}
-      />
+      {showTrack && (
+        <TrackPicker
+          label="Track"
+          required
+          size="sm"
+          fullWidth
+          value={trackId}
+          onChange={pickTrack}
+          tracks={tracks}
+        />
+      )}
       <TrackDayPicker
         label="Day"
         required

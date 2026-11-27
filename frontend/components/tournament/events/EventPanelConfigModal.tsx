@@ -46,7 +46,7 @@ export function EventPanelConfigModal({
   }
 
   return (
-    <Modal title="Configure event panel" onClose={onClose} width={420}>
+    <Modal title="Configure event panel" onClose={onClose} width={420} animateHeight>
       {loading ? (
         <LoadingState context="section" />
       ) : (

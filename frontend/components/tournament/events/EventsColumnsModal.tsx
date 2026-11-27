@@ -3,6 +3,7 @@
 import { ColumnToggleModal } from "@/components/tournament/ColumnToggleModal";
 import { DEFAULT_EVENT_COLUMNS, trackFamilyOf } from "@/components/tournament/events/eventColumns";
 import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
+import { useTournament } from "@/lib/useTournament";
 
 interface EventsColumnsModalProps {
   tournamentId: number;
@@ -19,13 +20,16 @@ const FAMILY_GROUPS = [
 ] as const;
 
 export function EventsColumnsModal({ tournamentId, onClose, onSaved }: EventsColumnsModalProps) {
+  const { isSimple } = useTournament();
   return (
     <ColumnToggleModal
       tournamentId={tournamentId}
       surface={EVENTS_TABLE}
       title="Configure table columns"
       defaultColumns={DEFAULT_EVENT_COLUMNS}
-      selectColumns={(catalog) => catalog.event_columns}
+      selectColumns={(catalog) =>
+        isSimple ? catalog.event_columns.filter((c) => c.key !== "tracks") : catalog.event_columns
+      }
       buildGroups={(columns) => {
         const families = FAMILY_GROUPS.map(({ family, title }) => ({
           title,

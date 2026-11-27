@@ -306,12 +306,23 @@ function splitLunchKey(key: string): [number, string] {
     : [Number(rest.slice(0, separator)), rest.slice(separator + 1)];
 }
 
-function entityColumn(key: string, label: string): MemberColumn | null {
+/** A per-track column's header with one track, whose name is the tournament's;
+ *  null for a key that isn't per track. */
+export function soleTrackColumnLabel(key: string): string | null {
+  if (key.startsWith(TRACK_PREFIX)) return "Status";
+  if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) return "Availability";
+  if (key.startsWith(EVENT_PREF_PREFIX)) return "Event prefs";
+  if (key.startsWith(LUNCH_PREFIX)) return unslug(splitLunchKey(key)[1]);
+  return null;
+}
+
+function entityColumn(key: string, label: string, simple: boolean): MemberColumn | null {
+  const sole = simple ? soleTrackColumnLabel(key) : null;
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
     return {
       key,
-      label: `${label} status`,
+      label: sole ?? `${label} status`,
       width: WIDTHS.track,
       sortField: key,
       render: (m) => {
@@ -329,7 +340,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
     const trackId = Number(key.slice(AVAILABILITY_TRACK_PREFIX.length));
     return {
       key,
-      label: `${label} availability`,
+      label: sole ?? `${label} availability`,
       width: WIDTHS.availabilityDay,
       sortField: key,
       render: (m) => {
@@ -362,7 +373,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
     const [trackId, category] = splitLunchKey(key);
     return {
       key,
-      label,
+      label: sole ?? label,
       width: WIDTHS.lunchCategory,
       sortField: key,
       render: (m) => {
@@ -385,7 +396,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
     const trackId = Number(key.slice(EVENT_PREF_PREFIX.length));
     return {
       key,
-      label: `${label} prefs`,
+      label: sole ?? `${label} prefs`,
       width: WIDTHS.eventPrefs,
       align: "start",
       render: (m) => {
@@ -449,12 +460,13 @@ export function resolveColumns(
   labels: Map<string, string>,
   collectIsOver18: boolean,
   collectIsOver21: boolean,
+  simple: boolean,
 ): MemberColumn[] {
   return keys
     .map(
       (key) =>
         fixedColumn(key, collectIsOver18, collectIsOver21) ??
-        entityColumn(key, labels.get(key) ?? unslug(key.split(":").pop() ?? key)),
+        entityColumn(key, labels.get(key) ?? unslug(key.split(":").pop() ?? key), simple),
     )
     .filter((column): column is MemberColumn => column !== null);
 }

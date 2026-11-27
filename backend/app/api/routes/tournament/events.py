@@ -15,6 +15,7 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament.shifts import lock_events, require_no_overlap
+from app.core.tournament.tracks import sole_live_track
 from app.db.session import get_db
 from app.models.models import (
     SEASON_FIELDS,
@@ -543,6 +544,8 @@ def load_default_events(
     created: list[TournamentEvent] = []
     skipped: list[EventLoadDefaultsSkipped] = []
     seen_pairs: set[tuple[int, str]] = set()
+    # A single-track tournament has no track controls to add one later.
+    sole_track = sole_live_track(db, tournament_id)
 
     for season_event in active_season_events:
         key = (season_event.event_id, season_event.division)
@@ -564,6 +567,8 @@ def load_default_events(
             name=season_event.event.name,
             **{field: getattr(season_event, field) for field in SEASON_FIELDS},
         )
+        if sole_track is not None:
+            event.track_details.append(TournamentEventTrack(track_id=sole_track.id))
         db.add(event)
         created.append(event)
 

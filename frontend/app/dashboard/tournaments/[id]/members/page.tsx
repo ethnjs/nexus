@@ -291,7 +291,7 @@ export default function MembersPage() {
   const initialMemberId = useInitialPanelId("member");
 
   const { user: currentUser } = useAuth();
-  const { selectedTournament } = useTournament();
+  const { selectedTournament, isSimple } = useTournament();
   const {
     canManageMembers,
     isArchived,
@@ -544,8 +544,9 @@ export default function MembersPage() {
       labels,
       !!selectedTournament?.collect_is_over_18,
       !!selectedTournament?.collect_is_over_21,
+      isSimple,
     );
-  }, [columnKeys, columnCatalog, selectedTournament]);
+  }, [columnKeys, columnCatalog, selectedTournament, isSimple]);
 
   // Off-default is what the Display button reports, compared after resolving
   // so a saved copy of the defaults doesn't read as a change.
@@ -556,6 +557,7 @@ export default function MembersPage() {
         new Map(),
         !!selectedTournament?.collect_is_over_18,
         !!selectedTournament?.collect_is_over_21,
+        false,
       )
         .map((c) => c.key)
         .join();

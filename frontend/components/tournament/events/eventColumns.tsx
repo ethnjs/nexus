@@ -27,6 +27,7 @@ import type { EventSortField } from "@/lib/eventSort";
 import { type TrackStaffing, toTrackDetailInput, withTrackDetail } from "@/lib/eventTrackDetails";
 import { formatOptions } from "@/lib/seasonDefaults";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
+import { isSimpleMode } from "@/lib/useTournament";
 
 // Mirrors the backend's DEFAULT_EVENT_COLUMNS — what the table shows until a
 // viewer saves their own, and what Reset returns to.
@@ -561,6 +562,7 @@ function eventColumn(key: string, ctx: EventColumnContext): EventColumn | null {
       // Which parts of the tournament this event belongs to. The days are
       // derivable from its shifts, but they are the same days its track
       // already names — the track is the thing that isn't inferable.
+      if (isSimpleMode(ctx.tracks)) return null;
       return {
         key,
         label: "Tracks",

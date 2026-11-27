@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SettingsSection } from "@/components/settings/SettingsRow";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { TrackFields } from "@/components/tournament/TrackFields";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -743,27 +743,22 @@ function TrackRow({
       </div>
 
       {expanded && (
-        <div
-          style={{
-            padding: panel ? 0 : "4px 12px 16px 34px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "14px",
-          }}
-        >
-          <Input
-            label="Name"
-            required
-            font="sans"
-            fullWidth
-            locked={readOnly}
-            placeholder="e.g. Day 1 or Test Writing"
-            value={draft.name}
-            onChange={(e) => onDraftChange({ name: e.target.value })}
-            error={errors.name}
-            autoFocus={isNew}
-          />
+        <div style={{ padding: panel ? 0 : "0 12px 4px 34px" }}>
+          <SettingsRow label="Name">
+            <Input
+              font="sans"
+              fullWidth
+              locked={readOnly}
+              placeholder="e.g. Day 1 or Test Writing"
+              value={draft.name}
+              onChange={(e) => onDraftChange({ name: e.target.value })}
+              error={errors.name}
+              autoFocus={isNew}
+            />
+          </SettingsRow>
           <TrackFields
+            layout="settings"
+            last
             draft={draft}
             errors={errors}
             universities={universities}
@@ -777,7 +772,7 @@ function TrackRow({
                 fontFamily: "var(--font-sans)",
                 fontSize: "12px",
                 color: "var(--color-danger)",
-                margin: 0,
+                margin: "0 0 12px",
               }}
             >
               {error}

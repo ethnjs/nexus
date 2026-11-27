@@ -92,21 +92,23 @@ import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useToast } from "@/lib/useToast";
+import { soleTrackOf } from "@/lib/useTournament";
 
 // Select / Label / Track / Date / Start / End / Duration / Events / Actions —
-// every column, always (no picker: a shift has few enough fields to show them
-// all). The select track is always present (0px when off) so its width can
+// every column (no picker: a shift has few enough fields to show them all),
+// except Track with one competition day, where every row would say the same.
+// The select track is always present (0px when off) so its width can
 // animate, like the events table.
 //
 // Every data column flexes from a floor that fits its content, so spare
 // width spreads across the row instead of pooling in Label and Track —
 // neither holds more than a word or two. Label never truncates; the table
 // scrolls sideways instead (see table.scroll).
-function shiftGridColumns(selectMode: boolean) {
+function shiftGridColumns(selectMode: boolean, showTrack: boolean) {
   return [
     selectMode ? "28px" : "0px",
     "minmax(max-content, 1.2fr)", // label
-    "minmax(80px, 0.8fr)", // track — one badge
+    ...(showTrack ? ["minmax(80px, 0.8fr)"] : []), // track — one badge
     "minmax(110px, 1fr)", // date — "Sat, Feb 13"
     "minmax(90px, 1fr)", // start
     "minmax(90px, 1fr)", // end
@@ -283,6 +285,7 @@ export default function ShiftsPage() {
     [tournamentId],
   );
 
+  const showTrack = tracks.length > 1;
   const trackById = useCallback(
     (trackId: number) => tracks.find((t) => t.id === trackId),
     [tracks],
@@ -411,7 +414,7 @@ export default function ShiftsPage() {
           shift={null}
           tracks={tracks}
           events={events}
-          defaultTrackId={filteredTrackId ?? (tracks.length === 1 ? tracks[0].id : null)}
+          defaultTrackId={filteredTrackId ?? soleTrackOf(tracks)?.id ?? null}
           locked={locked}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}
@@ -758,7 +761,7 @@ export default function ShiftsPage() {
               per row. */}
           <div
             className={`${table.table} ${table.animatedTracks}`}
-            style={{ gridTemplateColumns: shiftGridColumns(selectMode) }}
+            style={{ gridTemplateColumns: shiftGridColumns(selectMode, showTrack) }}
             // Arrow keys move between cells (see gridNav); Tab still walks the same stops.
             onKeyDown={handleGridArrows}
           >
@@ -782,7 +785,7 @@ export default function ShiftsPage() {
                 />
               </span>
               {sortableHeader("label", `Shifts — ${visibleShifts.length}`)}
-              {sortableHeader("track", "Track")}
+              {showTrack && sortableHeader("track", "Track")}
               {sortableHeader("date", "Date")}
               {sortableHeader("start", "Start")}
               {sortableHeader("end", "End")}
@@ -802,6 +805,7 @@ export default function ShiftsPage() {
                 key={shift.id}
                 shift={shift}
                 track={trackById(shift.track_id)}
+                showTrack={showTrack}
                 focused={focusedId === shift.id}
                 canEdit={canEdit}
                 deleteLockedReason={archivedReason}
@@ -861,7 +865,9 @@ export default function ShiftsPage() {
       {showSortModal && (
         <SortModal
           title="Sort shifts"
-          fields={SHIFT_SORT_OPTIONS}
+          fields={
+            showTrack ? SHIFT_SORT_OPTIONS : SHIFT_SORT_OPTIONS.filter((o) => o.value !== "track")
+          }
           rules={sortRules}
           defaults={DEFAULT_SHIFT_SORT}
           tiebreakLabel={SHIFT_SORT_TIEBREAK}
@@ -947,6 +953,7 @@ function moveToTrack(
 function ShiftRow({
   shift,
   track,
+  showTrack,
   focused,
   canEdit,
   deleteLockedReason,
@@ -961,6 +968,7 @@ function ShiftRow({
   shift: TournamentShift;
   /** Undefined only while the catalog is still loading. */
   track: TournamentTrack | undefined;
+  showTrack: boolean;
   focused: boolean;
   canEdit: boolean;
   deleteLockedReason?: string;
@@ -1079,23 +1087,25 @@ function ShiftRow({
       <span data-nav-col="label" style={{ ...LABEL_TEXT, whiteSpace: "nowrap" }}>
         {labelCell}
       </span>
-      <span data-nav-col="track" style={{ display: "flex", minWidth: 0 }}>
-        {edit && track ? (
-          <SelectCell
-            display={badge}
-            value={String(shift.track_id)}
-            options={trackOptions}
-            lockReason={lockReason}
-            align="start"
-            onPick={async (id) => {
-              const next = edit.tracks.find((t) => t.id === Number(id));
-              if (next) await edit.update(shift, moveToTrack(shift, next));
-            }}
-          />
-        ) : (
-          badge
-        )}
-      </span>
+      {showTrack && (
+        <span data-nav-col="track" style={{ display: "flex", minWidth: 0 }}>
+          {edit && track ? (
+            <SelectCell
+              display={badge}
+              value={String(shift.track_id)}
+              options={trackOptions}
+              lockReason={lockReason}
+              align="start"
+              onPick={async (id) => {
+                const next = edit.tracks.find((t) => t.id === Number(id));
+                if (next) await edit.update(shift, moveToTrack(shift, next));
+              }}
+            />
+          ) : (
+            badge
+          )}
+        </span>
+      )}
       {/* Only a multi-day track has another day to move to. */}
       <span data-nav-col="date" style={{ display: "flex", minWidth: 0 }}>
         {edit && days.length > 1 ? (

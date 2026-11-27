@@ -56,7 +56,7 @@ import {
 } from "@/lib/seasonDefaults";
 import { formatTime } from "@/lib/timeFormat";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { isSimpleMode, useTournament } from "@/lib/useTournament";
+import { isSimpleMode, soleTrackOf, useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 // Exported so the caller registering this panel in the layout slot reserves
@@ -83,7 +83,16 @@ interface EventDraft {
   trackDetails: DraftTrackDetail[];
 }
 
-function draftFromEvent(event: TournamentEvent | null): EventDraft {
+/** `soleTrackId` puts a new event on a simple tournament's only track. */
+function draftFromEvent(event: TournamentEvent | null, soleTrackId: number | null): EventDraft {
+  if (!event && soleTrackId !== null) {
+    return {
+      ...draftFromEvent(null, null),
+      trackDetails: [
+        { track_id: soleTrackId, building_id: null, floor: null, room_names: [], needs: [] },
+      ],
+    };
+  }
   return {
     eventText: event?.event?.name ?? event?.name ?? "",
     event_id: event?.event_id ?? null,
@@ -180,9 +189,8 @@ export function EventPanel({
   // and becomes the real row once a create lands — so the Shifts section
   // can appear without closing the panel.
   const [current, setCurrent] = useState<TournamentEvent | null>(event);
-  // A single-day tournament has only one valid day anyway — default to it
-  // immediately instead of making every new event pick it.
-  const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event));
+  const soleTrackId = soleTrackOf(tracks)?.id ?? null;
+  const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event, soleTrackId));
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
@@ -218,8 +226,8 @@ export function EventPanel({
   // untouched "New event" panel reads as clean — closing it needs no
   // confirmation until the user actually types something.
   const isDirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current)),
-    [draft, current],
+    () => JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current, soleTrackId)),
+    [draft, current, soleTrackId],
   );
 
   useEffect(() => {
@@ -242,8 +250,8 @@ export function EventPanel({
     seenEventRef.current = event;
     if (!event) return;
     setCurrent(event);
-    if (!dirtyRef.current) setDraft(draftFromEvent(event));
-  }, [event]);
+    if (!dirtyRef.current) setDraft(draftFromEvent(event, soleTrackId));
+  }, [event, soleTrackId]);
   const eventId = event?.id ?? null;
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1), eventId !== null);
@@ -274,7 +282,7 @@ export function EventPanel({
         // new object, which re-rendered the whole assignments board per open.
         if (seenEventRef.current && sameEvent(seenEventRef.current, fresh)) return;
         setCurrent(fresh);
-        setDraft(draftFromEvent(fresh));
+        setDraft(draftFromEvent(fresh, soleTrackId));
         onSaved(fresh);
       })
       .catch(() => {});
@@ -365,7 +373,7 @@ export function EventPanel({
           })
         : await tournamentEventsApi.update(tournamentId, current!.id, payload);
       setCurrent(saved);
-      setDraft(draftFromEvent(saved));
+      setDraft(draftFromEvent(saved, soleTrackId));
       onSaved(saved);
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
@@ -420,7 +428,7 @@ export function EventPanel({
   // Discards the draft only — the panel stays open, matching the table's own
   // "Cancel" bar (the shifts page) rather than treating Cancel as a second Close.
   function handleCancel() {
-    setDraft(draftFromEvent(current));
+    setDraft(draftFromEvent(current, soleTrackId));
     setSaveError(undefined);
   }
 
@@ -447,7 +455,7 @@ export function EventPanel({
         shift_ids: shiftIds,
       });
       setCurrent(updated);
-      setDraft(draftFromEvent(updated));
+      setDraft(draftFromEvent(updated, soleTrackId));
       onSaved(updated);
     } catch (err) {
       setShiftError(err instanceof ApiError ? err.message : "Failed to update shifts.");
@@ -592,6 +600,7 @@ export function EventPanel({
               value={draft.eventText}
               onChange={handleEventTextChange}
               allowFreeText
+              font="sans"
               locked={locked}
               placeholder="Search or type a custom event name"
             />
@@ -664,7 +673,7 @@ export function EventPanel({
             />
           </SettingsRow>
 
-          <SettingsRow label="Self-schedule">
+          <SettingsRow label="Self-schedule" last={simple && (isNew || locked)}>
             <Switch
               checked={seasonValues.has_self_schedule}
               onChange={(v) => patchSeason({ has_self_schedule: v })}
@@ -674,6 +683,7 @@ export function EventPanel({
 
           {!isNew && !locked && (
             <SettingsRow
+              last={simple}
               label="Season defaults"
               helper="Saves this season's format, impound and self-schedule to the event."
             >
@@ -704,53 +714,55 @@ export function EventPanel({
           {/* Adding a shift adds its track automatically; this is how an
               event reaches an undated track (Test Writing) that has no
               shifts to infer it from. */}
-          <SettingsRow label="Tracks" last>
-            <ChipInput
-              value={trackIds.map((id) => trackNames.get(id) ?? String(id))}
-              onChange={(names) =>
-                patch({
-                  trackDetails: draft.trackDetails.filter((d) =>
-                    names.includes(trackNames.get(d.track_id) ?? String(d.track_id)),
-                  ),
-                })
-              }
-              variant="transparent"
-              size="sm"
-              disableInput
-              locked={locked}
-              fullWidth
-              // A pending-delete track reads as a warning rather than a
-              // normal chip: this event is one of the references holding it
-              // there, which is not obvious from the name alone.
-              getChipStatus={(name) => (pendingTrackNames.has(name) ? "warning" : "default")}
-              getChipTooltip={(name) =>
-                pendingTrackNames.has(name) ? PENDING_TRACK_NOTE : undefined
-              }
-              addButton={
-                <ChecklistPopover
-                  trigger={
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      iconOnly
-                      title="Add track"
-                      style={{ padding: 0, flexShrink: 0 }}
-                    >
-                      <IconPlus size={14} />
-                    </Button>
-                  }
-                  items={selectableTracks}
-                  getKey={(t) => t.id}
-                  renderLabel={(t) => t.name}
-                  isSelected={(t) => trackIds.includes(t.id)}
-                  onToggle={(t) => toggleTrack(t.id)}
-                  emptyMessage="No tracks yet."
-                  width={280}
-                />
-              }
-            />
-          </SettingsRow>
+          {!simple && (
+            <SettingsRow label="Tracks" last>
+              <ChipInput
+                value={trackIds.map((id) => trackNames.get(id) ?? String(id))}
+                onChange={(names) =>
+                  patch({
+                    trackDetails: draft.trackDetails.filter((d) =>
+                      names.includes(trackNames.get(d.track_id) ?? String(d.track_id)),
+                    ),
+                  })
+                }
+                variant="transparent"
+                size="sm"
+                disableInput
+                locked={locked}
+                fullWidth
+                // A pending-delete track reads as a warning rather than a
+                // normal chip: this event is one of the references holding it
+                // there, which is not obvious from the name alone.
+                getChipStatus={(name) => (pendingTrackNames.has(name) ? "warning" : "default")}
+                getChipTooltip={(name) =>
+                  pendingTrackNames.has(name) ? PENDING_TRACK_NOTE : undefined
+                }
+                addButton={
+                  <ChecklistPopover
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        iconOnly
+                        title="Add track"
+                        style={{ padding: 0, flexShrink: 0 }}
+                      >
+                        <IconPlus size={14} />
+                      </Button>
+                    }
+                    items={selectableTracks}
+                    getKey={(t) => t.id}
+                    renderLabel={(t) => t.name}
+                    isSelected={(t) => trackIds.includes(t.id)}
+                    onToggle={(t) => toggleTrack(t.id)}
+                    emptyMessage="No tracks yet."
+                    width={280}
+                  />
+                }
+              />
+            </SettingsRow>
+          )}
         </SettingsSection>
 
         <SettingsSection title="Location">
@@ -920,6 +932,7 @@ export function EventPanel({
                               <CreateShiftForm
                                 tournamentId={tournamentId}
                                 tracks={newShiftTracks}
+                                showTrack={!simple}
                                 onCreated={async (shift) => {
                                   await handleCreateAndAttachShift(shift);
                                   close();

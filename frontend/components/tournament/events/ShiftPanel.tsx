@@ -24,6 +24,7 @@ import {
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { fromDayAndTime, toDateInput, toTimeInput } from "@/lib/timeFormat";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { soleTrackOf } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 // Exported so the caller registering this panel in the layout slot reserves
@@ -179,6 +180,13 @@ export function ShiftPanel({
     () => tracks.filter((t) => !t.is_archived || t.id === shift?.track_id),
     [tracks, shift],
   );
+  // One competition day leaves nothing to pick, so the Track row is hidden
+  // and this fills the track in, as TrackPicker would.
+  const soleTrackId = tracks.length === 1 ? (soleTrackOf(trackOptions)?.id ?? null) : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: patch is a fresh closure on every render
+  useEffect(() => {
+    if (draft.trackId === null && soleTrackId !== null) patch({ trackId: soleTrackId });
+  }, [draft.trackId, soleTrackId]);
 
   function patch(p: Partial<ShiftDraft>) {
     setDraft((d) => {
@@ -316,17 +324,19 @@ export function ShiftPanel({
 
           {/* Only competition days appear: a cosmetic track has no dates for
               a shift to sit inside, and the backend refuses one outright. */}
-          <SettingsRow label="Track">
-            <TrackPicker
-              fullWidth
-              locked={locked}
-              value={draft.trackId}
-              onChange={(id) => patch({ trackId: id })}
-              tracks={trackOptions}
-              emptyPlaceholder="No competition days yet"
-              error={fieldErrors.trackId}
-            />
-          </SettingsRow>
+          {soleTrackId === null && (
+            <SettingsRow label="Track">
+              <TrackPicker
+                fullWidth
+                locked={locked}
+                value={draft.trackId}
+                onChange={(id) => patch({ trackId: id })}
+                tracks={trackOptions}
+                emptyPlaceholder="No competition days yet"
+                error={fieldErrors.trackId}
+              />
+            </SettingsRow>
+          )}
 
           <SettingsRow label="Day">
             <TrackDayPicker
