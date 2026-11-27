@@ -304,10 +304,10 @@ def pick_answer(rng: random.Random, field):
         return True
     if field.question_type in ("short_text", "long_text"):
         return rng.choice(["No notes", "Happy to help wherever needed", "Parking question"])
-    if field.question_type == "grid":
+    if field.question_type in ("grid_single", "grid_multiple"):
         rows = [r["option_id"] for r in config["rows"] if not r.get("is_archived")]
         columns = [c["option_id"] for c in config["columns"] if not c.get("is_archived")]
-        if config["column_selection"] == "multiple":
+        if field.question_type == "grid_multiple":
             return {r: rng.sample(columns, rng.randint(1, len(columns))) for r in rows}
         if config.get("one_per_column"):
             return dict(zip(rows, rng.sample(columns, min(len(rows), len(columns))), strict=False))

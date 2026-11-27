@@ -59,7 +59,8 @@ Availability answers stored bare `option_id`s until revision 17852c91b77c, which
 | `multi_select_checkbox` | `required`, `options`, `display_style`, `track_status_enabled`, `show_shift_times` | list of snapshots | no |
 | `ranked_choice` | `required`, `options`, `ranks`, `allow_duplicates` | `{"1": snapshot, "2": snapshot}` | no |
 | `short_text`, `long_text` | `required`, `max_length` | string | no |
-| `grid` | `required`, `rows`, `columns`, `column_selection` (`"single"` or `"multiple"`), `one_per_column` | `{row_id: snapshot}`, or `{row_id: [snapshots]}` when `multiple` | no |
+| `grid_single` | `required`, `rows`, `columns`, `one_per_column` | `{row_id: snapshot}` | no |
+| `grid_multiple` | `required`, `rows`, `columns` | `{row_id: [snapshots]}` | no |
 
 - `ranks` can't exceed the number of options.
 - With `allow_duplicates: false`, an answer that picks one option at two ranks is rejected with a 400.
@@ -68,11 +69,11 @@ Availability answers stored bare `option_id`s until revision 17852c91b77c, which
 
 ### Grid
 
-A grid asks one question per row, answered by picking from the columns. Rows and columns are both shaped like options (`option_id`, `value`, `label`, `is_archived`), and an answer snapshots the picked columns the same way, keyed by row `option_id`.
+A grid asks one question per row, answered by picking one column (`grid_single`, a multiple choice grid) or several (`grid_multiple`, a checkbox grid). Rows and columns are both shaped like options (`option_id`, `value`, `label`, `is_archived`), and an answer snapshots the picked columns the same way, keyed by row `option_id`.
 
 - `required` means every live row is answered.
-- `one_per_column` lets each column be picked in at most one row, which is how a grid ranks things. It needs `column_selection: "single"`.
-- A submission naming an unknown or archived row or column, sending a list on a single grid (or a string on a multiple one), repeating a column in one row, or reusing a column under `one_per_column` is rejected with a 400.
+- `one_per_column` (`grid_single` only) lets each column be picked in at most one row, which is how a grid ranks things. It's Google Forms' "Limit to one response per column".
+- A submission naming an unknown or archived row or column, sending a list on `grid_single` (or a string on `grid_multiple`), repeating a column in one row, or reusing a column under `one_per_column` is rejected with a 400.
 - `GET /forms/{id}/` returns archived rows and columns with `is_archived: true` instead of dropping them, so a past answer can still label its rows. The renderer skips them when someone fills the form.
 - A grid can't take a reserved key, branch, or have an Other option.
 

@@ -19,6 +19,7 @@ from app.models.models import (
     TournamentShift,
     TournamentTrack,
 )
+from app.schemas.form import GRID_QUESTION_TYPES
 
 
 def slugify(text: str, max_len: int = 64) -> str:
@@ -64,7 +65,7 @@ def snapshot_answer_value(field: FormField, value):
     at submission, so later edits to the option don't change how it reads.
     Returns `value` unchanged when it doesn't match the expected shape, since
     it's unvalidated input."""
-    if field.question_type == "grid":
+    if field.question_type in GRID_QUESTION_TYPES:
         return _snapshot_grid(field, value)
     if field.question_type not in OPTION_BEARING_TYPES or value is None:
         return value
@@ -108,7 +109,7 @@ def selected_option_ids(field: FormField, value) -> set:
     to check a stored answer against a set of newly-archived option_ids."""
     if value is None:
         return set()
-    if field.question_type == "grid":
+    if field.question_type in GRID_QUESTION_TYPES:
         picked = value.values() if isinstance(value, dict) else []
         items = [item for p in picked for item in (p if isinstance(p, list) else [p])]
     elif field.question_type == "ranked_choice":

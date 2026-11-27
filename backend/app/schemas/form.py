@@ -218,13 +218,10 @@ def _unique_grid_choices(choices: list[GridChoice]) -> list[GridChoice]:
     return choices
 
 
-class GridConfig(BaseModel):
+class MultipleGridConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     # Every live row must be answered.
     required: bool
-    column_selection: Literal["single", "multiple"]
-    # Each column may be picked in at most one row, which is how a grid ranks.
-    one_per_column: bool = False
     rows: list[GridChoice] = Field(min_length=1)
     columns: list[GridChoice] = Field(min_length=1)
 
@@ -233,11 +230,10 @@ class GridConfig(BaseModel):
     def _unique(cls, choices: list[GridChoice]) -> list[GridChoice]:
         return _unique_grid_choices(choices)
 
-    @model_validator(mode="after")
-    def _one_per_column_needs_single(self):
-        if self.one_per_column and self.column_selection != "single":
-            raise ValueError("one_per_column requires column_selection 'single'")
-        return self
+
+class SingleGridConfig(MultipleGridConfig):
+    # Each column may be picked in at most one row, which is how a grid ranks.
+    one_per_column: bool = False
 
 
 QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
@@ -248,8 +244,11 @@ QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
     "ranked_choice": RankedChoiceConfig,
     "short_text": TextConfig,
     "long_text": TextConfig,
-    "grid": GridConfig,
+    "grid_single": SingleGridConfig,
+    "grid_multiple": MultipleGridConfig,
 }
+
+GRID_QUESTION_TYPES = {"grid_single", "grid_multiple"}
 
 
 # ---------------------------------------------------------------------------

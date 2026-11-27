@@ -4529,7 +4529,6 @@ class TestImportForms:
 def _grid_config(**overrides):
     config = {
         "required": True,
-        "column_selection": "single",
         "rows": [
             {"option_id": "row_sat", "value": "sat", "label": "Saturday"},
             {"option_id": "row_sun", "value": "sun", "label": "Sunday"},
@@ -4545,10 +4544,10 @@ def _grid_config(**overrides):
 
 
 class TestGridQuestion:
-    def _submit(self, client, db, td_user, td_tournament, value, **config):
+    def _submit(self, client, db, td_user, td_tournament, question_type, value, **config):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="days", question_type="grid", config=_grid_config(**config)
+            db, form, field_key="days", question_type=question_type, config=_grid_config(**config)
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -4561,32 +4560,34 @@ class TestGridQuestion:
         form = _make_form(db, td_user, td_tournament)
         db.commit()
         login(client, "td@test.com", "tdpass")
-        grid = _simple_entry(
-            question_type="grid",
-            config={
-                "required": False,
-                "column_selection": "single",
-                "rows": [{"value": "r", "label": "Row"}],
-                "columns": [{"value": "c", "label": "Column"}],
-            },
-        )
+        config = {
+            "required": False,
+            "rows": [{"value": "r", "label": "Row"}],
+            "columns": [{"value": "c", "label": "Column"}],
+        }
+        grid = _simple_entry(question_type="grid_single", config=config)
 
         res = client.put(f"/forms/{form.id}/fields/", json={"fields": [grid]})
         assert res.status_code == 200
-        config = res.json()[0]["config"]
-        assert config["rows"][0]["option_id"] and config["columns"][0]["option_id"]
+        saved = res.json()[0]["config"]
+        assert saved["rows"][0]["option_id"] and saved["columns"][0]["option_id"]
 
-        multiple_ranked = {**grid["config"], "column_selection": "multiple", "one_per_column": True}
-        duplicate_rows = {**grid["config"], "rows": [{"value": "r", "label": "A"}] * 2}
-        for bad in (multiple_ranked, duplicate_rows):
-            res = client.put(
-                f"/forms/{form.id}/fields/", json={"fields": [{**grid, "config": bad}]}
+        for bad in (
+            _simple_entry(question_type="grid_multiple", config={**config, "one_per_column": True}),
+            {**grid, "config": {**config, "rows": [{"value": "r", "label": "A"}] * 2}},
+        ):
+            assert (
+                client.put(f"/forms/{form.id}/fields/", json={"fields": [bad]}).status_code == 422
             )
-            assert res.status_code == 422
 
     def test_single_answer_stores_column_snapshots(self, client, db, td_user, td_tournament):
         res = self._submit(
-            client, db, td_user, td_tournament, {"row_sat": "col_am", "row_sun": "col_am"}
+            client,
+            db,
+            td_user,
+            td_tournament,
+            "grid_single",
+            {"row_sat": "col_am", "row_sun": "col_am"},
         )
         assert res.status_code == 200
         assert res.json()["answers"][0]["value"] == {
@@ -4600,8 +4601,8 @@ class TestGridQuestion:
             db,
             td_user,
             td_tournament,
+            "grid_multiple",
             {"row_sat": ["col_am", "col_pm"], "row_sun": ["col_pm"]},
-            column_selection="multiple",
         )
         assert res.status_code == 200
         assert [c["option_id"] for c in res.json()["answers"][0]["value"]["row_sat"]] == [
@@ -4610,17 +4611,14 @@ class TestGridQuestion:
         ]
 
     @pytest.mark.parametrize(
-        ("value", "config"),
+        ("question_type", "value", "config"),
         [
-            ({"row_sat": "col_am"}, {}),
-            ({"row_sat": "col_am", "row_sun": "col_xx"}, {}),
-            ({"row_sat": "col_am", "row_sun": "col_am", "row_old": "col_pm"}, {}),
-            ({"row_sat": "col_am", "row_sun": "col_am"}, {"one_per_column": True}),
-            (
-                {"row_sat": ["col_am", "col_am"], "row_sun": ["col_pm"]},
-                {"column_selection": "multiple"},
-            ),
-            ({"row_sat": "col_am", "row_sun": "col_pm"}, {"column_selection": "multiple"}),
+            ("grid_single", {"row_sat": "col_am"}, {}),
+            ("grid_single", {"row_sat": "col_am", "row_sun": "col_xx"}, {}),
+            ("grid_single", {"row_sat": "col_am", "row_sun": "col_am", "row_old": "col_pm"}, {}),
+            ("grid_single", {"row_sat": "col_am", "row_sun": "col_am"}, {"one_per_column": True}),
+            ("grid_multiple", {"row_sat": ["col_am", "col_am"], "row_sun": ["col_pm"]}, {}),
+            ("grid_multiple", {"row_sat": "col_am", "row_sun": "col_pm"}, {}),
         ],
         ids=[
             "required-row-missing",
@@ -4631,6 +4629,8 @@ class TestGridQuestion:
             "string-on-multiple",
         ],
     )
-    def test_rejects_invalid_answers(self, client, db, td_user, td_tournament, value, config):
-        res = self._submit(client, db, td_user, td_tournament, value, **config)
+    def test_rejects_invalid_answers(
+        self, client, db, td_user, td_tournament, question_type, value, config
+    ):
+        res = self._submit(client, db, td_user, td_tournament, question_type, value, **config)
         assert res.status_code == 400

@@ -7,6 +7,7 @@ from typing import Any
 
 from app.core.form.validation import BRANCHING_QUESTION_TYPES
 from app.models.models import FormField
+from app.schemas.form import GRID_QUESTION_TYPES
 
 
 def compute_reachable_field_ids(fields: list[FormField], answers: dict[str, Any]) -> set[str]:
@@ -84,7 +85,7 @@ def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]
         and (field.config or {}).get("required")
         and (
             _grid_is_incomplete(field, answers.get(field.id))
-            if field.question_type == "grid"
+            if field.question_type in GRID_QUESTION_TYPES
             else _is_blank(answers.get(field.id))
         )
     ]
@@ -92,10 +93,10 @@ def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]
 
 def invalid_grid_answer_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
     """field_keys of grid answers that aren't {live row id: live column id} (a list of distinct
-    column ids on a multiple-choice grid), or that reuse a column under one_per_column."""
+    column ids on grid_multiple), or that reuse a column under one_per_column."""
     offenders = []
     for field in fields:
-        if field.question_type != "grid" or field.id not in answers:
+        if field.question_type not in GRID_QUESTION_TYPES or field.id not in answers:
             continue
         config = field.config or {}
         rows, columns = _live_ids(config["rows"]), _live_ids(config["columns"])
@@ -106,7 +107,7 @@ def invalid_grid_answer_field_keys(fields: list[FormField], answers: dict[str, A
         picked: list[Any] = []
         valid = True
         for selection in value.values():
-            if config["column_selection"] == "multiple":
+            if field.question_type == "grid_multiple":
                 valid = isinstance(selection, list) and len(selection) == len(set(selection))
             else:
                 valid = isinstance(selection, str)

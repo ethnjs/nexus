@@ -127,7 +127,7 @@ def chapter(db):
 class TestValidateFieldConfig:
     def test_unknown_question_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
-            validate_field_config("grid", {})
+            validate_field_config("not_a_type", {})
 
     def test_missing_required_key_rejected(self):
         with pytest.raises(FormFieldValidationError):
