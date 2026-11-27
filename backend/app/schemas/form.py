@@ -291,6 +291,7 @@ class FormRead(BaseModel):
     title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"]
+    kind: Literal["standard", "import"] = "standard"
     owner_type: Literal["tournament", "chapter"]
     tournament_id: int | None = None
     # Null for a chapter form, which has no tournament to be archived.
@@ -320,6 +321,7 @@ class FormListRead(BaseModel):
     title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"]
+    kind: Literal["standard", "import"] = "standard"
     owner_type: Literal["tournament", "chapter"]
     tournament_id: int | None = None
     chapter_id: int | None = None
@@ -377,6 +379,7 @@ class MemberFormRead(BaseModel):
     title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"]
+    kind: Literal["standard", "import"] = "standard"
     is_onboarding: bool
     completed: bool
     eligible: bool

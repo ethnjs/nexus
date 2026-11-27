@@ -2120,6 +2120,14 @@ class Form(Base):
     status: Mapped[Literal["draft", "published", "archived"]] = mapped_column(
         String(16), default="draft"
     )
+    # An import form is filled only by imports, never submitted, so it is
+    # never published. Its TournamentForm row lets members read their response.
+    kind: Mapped[Literal["standard", "import"]] = mapped_column(
+        String(16), default="standard", server_default="standard"
+    )
+    # Where an import form's rows come from: the Google Form, spreadsheet and
+    # tab, or the uploaded file's type. Null on a standard form.
+    import_source: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     # Null once the creator's account is deleted.
     created_by: Mapped[int | None] = mapped_column(
@@ -2159,6 +2167,9 @@ class Form(Base):
             "(owner_type = 'chapter' AND chapter_id IS NOT NULL AND tournament_id IS NULL)",
             name="ck_form_owner_exclusive",
         ),
+        CheckConstraint(
+            "kind = 'standard' OR owner_type = 'tournament'", name="ck_form_import_tournament"
+        ),
     )
 
     # Read by the forms list page to preemptively disable Delete (which
@@ -2191,7 +2202,8 @@ class Form(Base):
 # rows). Standard, non-onboarding tournament forms leave order null.
 #
 # A form with is_onboarding=True can't be deleted until it's removed from
-# onboarding (see _reject_if_onboarding in api/routes/forms.py).
+# onboarding (see _reject_if_onboarding in api/routes/forms.py). An import
+# form's row is never an onboarding step and has no prerequisites.
 #
 # form_id is this row's own primary key, not a separate surrogate id — the
 # relationship is strictly 1:1, so there's no "which TournamentForm" beyond
@@ -2252,6 +2264,9 @@ class FormField(Base):
     # For "page_break": unused, null
 
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # On an import form: which source columns fill this field and how their
+    # cells parse into answers. Null on a standard form.
+    import_mapping: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

@@ -274,6 +274,7 @@ def list_my_tournament_forms(
                     title=form.title,
                     description=form.description,
                     status=form.status,
+                    kind=form.kind,
                     is_onboarding=tournament_form.is_onboarding,
                     completed=completed,
                     eligible=eligible,
@@ -419,6 +420,7 @@ def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
         title=form.title,
         description=form.description,
         status=form.status,
+        kind=form.kind,
         owner_type=form.owner_type,
         tournament_id=form.tournament_id,
         chapter_id=form.chapter_id,
@@ -491,6 +493,11 @@ def update_tournament_form_prerequisites(
     )
     if form is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    if form.kind == "import":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Import forms can't have prerequisites",
+        )
 
     tournament_form = db.query(TournamentForm).filter(TournamentForm.form_id == form_id).first()
     if tournament_form is None:
@@ -613,6 +620,11 @@ def update_form(
             detail="An archived form must be unarchived to draft and reviewed before it can be republished",
         )
 
+    if payload.status == "published" and form.kind == "import":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Import forms are filled by imports and can't be published",
+        )
     if payload.status == "published":
         try:
             validate_form_for_publish(db, form)
@@ -701,6 +713,8 @@ def bulk_update_fields(
 ):
     require_form_not_archived(form)
     require_form_editable(form)
+    if form.kind == "import":
+        _reject_required_and_branching(payload)
     is_history_preserving = _is_history_preserving(db, form)
 
     # Archived fields are addressable here too: naming one in the payload
@@ -888,7 +902,32 @@ def _is_history_preserving(db: Session, form: Form) -> bool:
     )
 
 
+def _reject_required_and_branching(payload: BulkFieldsUpdate) -> None:
+    """Import rows are stored whatever they leave blank, so import forms have neither."""
+    for entry in payload.fields:
+        config = entry.config or {}
+        if config.get("required"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Import form questions can't be required: {entry.label!r}",
+            )
+        options = config.get("options")
+        if isinstance(options, list) and any(
+            isinstance(option, dict) and (option.get("next_field_id") or option.get("action"))
+            for option in options
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Import form questions can't branch: {entry.label!r}",
+            )
+
+
 def _require_published(form: Form) -> None:
+    if form.kind == "import":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Import forms are filled by imports, not submitted",
+        )
     if form.status != "published":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

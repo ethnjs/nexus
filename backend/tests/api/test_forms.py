@@ -4412,3 +4412,110 @@ class TestSubmissionReachabilityEnforcement:
             json={"answers": [{"field_id": branch_field.id, "value": "opt_yes"}]},
         )
         assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Import forms
+# ---------------------------------------------------------------------------
+
+
+class TestImportForms:
+    def _import_form(self, db, user, tournament):
+        form = _make_form(db, user, tournament, kind="import", name="Interest form import")
+        db.add(TournamentForm(form_id=form.id, tournament_id=tournament.id))
+        db.commit()
+        return form
+
+    def test_only_imported_members_can_read_it(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        form = self._import_form(db, td_user, td_tournament)
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        bystander = make_user(db, "bystander@test.com", password="MemberPass123!")
+        grant_role(db, td_tournament, bystander, "Runner")
+        db.add(FormResponse(form_id=form.id, user_id=other_user.id))
+        db.commit()
+
+        login(client, "other@test.com", "otherpass")
+        assert client.get(f"/forms/{form.id}/").status_code == 200
+        rows = {r["id"]: r for r in client.get(f"/tournaments/{td_tournament.id}/forms/me/").json()}
+        assert (rows[form.id]["kind"], rows[form.id]["completed"], rows[form.id]["eligible"]) == (
+            "import",
+            True,
+            False,
+        )
+
+        login(client, "bystander@test.com", "MemberPass123!")
+        assert client.get(f"/forms/{form.id}/").status_code == 404
+        assert form.id not in {
+            r["id"] for r in client.get(f"/tournaments/{td_tournament.id}/forms/me/").json()
+        }
+
+        # Nobody is asked to fill it out, so the member flow preview leaves it out.
+        login(client, "td@test.com", "tdpass")
+        flow = client.get(
+            f"/tournaments/{td_tournament.id}/forms/flow/?membership_id={membership.id}"
+        ).json()
+        assert form.id not in {step["form_id"] for step in flow["forms"]}
+
+    def test_rejects_submission_publish_onboarding_and_prerequisites(
+        self, client, db, td_user, td_tournament
+    ):
+        form = self._import_form(db, td_user, td_tournament)
+        field = _make_field(db, form)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        submit = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_1"}]},
+        )
+        assert submit.status_code == 409
+        assert client.patch(f"/forms/{form.id}/", json={"status": "published"}).status_code == 409
+        assert (
+            client.post(
+                f"/tournaments/{td_tournament.id}/onboarding-forms/", json={"form_id": form.id}
+            ).status_code
+            == 422
+        )
+        assert (
+            client.patch(
+                f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+                json={"roles": []},
+            ).status_code
+            == 422
+        )
+        assert db.query(FormResponse).filter_by(form_id=form.id).count() == 0
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            _simple_entry(config={"required": True, "max_length": 100}),
+            _simple_entry(
+                question_type="single_select_dropdown",
+                config={
+                    "required": False,
+                    "options": [
+                        {"option_id": "opt_1", "value": "opt_1", "label": "Red"},
+                        {
+                            "option_id": "opt_2",
+                            "value": "opt_2",
+                            "label": "Blue",
+                            "action": "submit_form",
+                        },
+                    ],
+                },
+            ),
+        ],
+        ids=["required", "branching"],
+    )
+    def test_fields_cant_be_required_or_branch(self, client, db, td_user, td_tournament, entry):
+        form = self._import_form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(f"/forms/{form.id}/fields/", json={"fields": [entry]})
+        assert res.status_code == 422
+        assert (
+            client.put(f"/forms/{form.id}/fields/", json={"fields": [_simple_entry()]}).status_code
+            == 200
+        )

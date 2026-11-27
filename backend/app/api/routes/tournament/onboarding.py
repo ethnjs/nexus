@@ -112,6 +112,11 @@ def add_onboarding_form(
     )
     if tf is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    if tf.form.kind == "import":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Import forms can't be part of onboarding",
+        )
     if tf.is_onboarding:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="This form is already part of onboarding"

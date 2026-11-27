@@ -108,7 +108,7 @@ def require_form_view_access(
     """Dependency — loads the Form and requires either manage access, or
     plain membership in the owning tournament/chapter (for the people
     filling the form out, not just the people managing it). A tournament
-    respondent gets 404 for a draft, or an archived form they never answered."""
+    respondent gets 404 for a draft, or an archived or import form they never answered."""
     form = _load_form_or_404(form_id, db)
 
     if form.owner_type == "tournament":
@@ -132,6 +132,11 @@ def require_form_view_access(
             .first()
             is not None
         )
+        # An import form is never published; only the people it imported can read it.
+        if form.kind == "import":
+            if not responded:
+                raise _form_not_found()
+            return form
         if form.status == "draft" or (form.status == "archived" and not responded):
             raise _form_not_found()
         # A response to an archived form stays readable whatever the gates

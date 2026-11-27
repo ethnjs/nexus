@@ -42,7 +42,7 @@ def member_form_flow(db: Session, membership: TournamentMembership) -> MemberFor
     rows = (
         db.query(TournamentForm)
         .join(Form, TournamentForm.form_id == Form.id)
-        .filter(TournamentForm.tournament_id == membership.tournament_id)
+        .filter(TournamentForm.tournament_id == membership.tournament_id, Form.kind == "standard")
         .order_by(TournamentForm.order, Form.name)
         .all()
     )
