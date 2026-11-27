@@ -60,6 +60,14 @@ def role_deleted(db: Session, guild_id: int, role_id: int) -> None:
         db.commit()
 
 
+def role_moved(db: Session, guild_id: int) -> None:
+    """Shows or clears the warning about managed roles above the bot within seconds."""
+    link = syncing_link(db, guild_id)
+    if link is not None:
+        mark_structure(db, link.id)
+        db.commit()
+
+
 def channel_deleted(db: Session, guild_id: int, channel_id: int) -> None:
     link = syncing_link(db, guild_id)
     if link is None:
@@ -121,6 +129,9 @@ class DatabaseEvents:
 
     def role_deleted(self, guild_id: int, role_id: int) -> None:
         self._run(role_deleted, guild_id, role_id)
+
+    def role_moved(self, guild_id: int) -> None:
+        self._run(role_moved, guild_id)
 
     def channel_deleted(self, guild_id: int, channel_id: int) -> None:
         self._run(channel_deleted, guild_id, channel_id)

@@ -188,6 +188,7 @@ The client asks only for the `guilds` and `members` intents, with no member cach
 | Managed role deleted | full (recreate it, then give it back) |
 | Managed channel or category deleted | structure |
 | Channel created; a staff role's overwrite removed entirely | structure |
+| A role's position changes | structure, so the warning about managed roles above lobot shows or clears within seconds |
 | Bot removed; server renamed | sets `bot_removed_at`; updates `guild_name` |
 
 lobot sees its own changes too; repeated marks merge, so a build's channel creates add one no-op structure reconcile afterwards. The gateway is a convenience: the sweep and the Verify button cover anything missed during a deploy.

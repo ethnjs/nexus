@@ -1051,10 +1051,16 @@ class TestGatewayEvents:
         gateway_events.member_joined(db, GUILD_ID, 7001)
         assert _marks(db) == [("member", 7001)]
 
+    async def test_a_role_move_marks_the_server(self, db, built):
+        gateway_events.role_moved(db, GUILD_ID)
+        gateway_events.role_moved(db, GUILD_ID)
+        assert _marks(db) == [("structure", None)]
+
     async def test_servers_that_dont_sync_are_ignored(self, db, link):
         gateway_events.member_joined(db, GUILD_ID, 7001)
         gateway_events.channel_created(db, GUILD_ID)
         gateway_events.member_joined(db, 9999, 7001)
+        gateway_events.role_moved(db, GUILD_ID)
         assert _marks(db) == []
 
     async def test_unmanaged_roles_and_channels_are_ignored(self, db, built, guild):
