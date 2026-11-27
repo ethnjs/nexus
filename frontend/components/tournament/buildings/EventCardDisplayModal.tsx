@@ -32,7 +32,7 @@ export function EventCardDisplayModal({
   }
 
   return (
-    <Modal title="Configure event cards" onClose={onClose} width={360}>
+    <Modal title="Configure event cards" onClose={onClose} width={360} animateHeight>
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {EVENT_CARD_FIELDS.map((field) => (
           <CheckboxRow

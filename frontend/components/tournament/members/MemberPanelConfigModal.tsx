@@ -253,7 +253,7 @@ export function MemberPanelConfigModal({
   }
 
   return (
-    <Modal title="Configure member panel" onClose={onClose} width={640}>
+    <Modal title="Configure member panel" onClose={onClose} width={640} animateHeight>
       {error && (
         <p
           style={{

@@ -89,7 +89,7 @@ export function ColumnToggleModal({
   }
 
   return (
-    <Modal title={title} onClose={onClose} width={width}>
+    <Modal title={title} onClose={onClose} width={width} animateHeight>
       {error && (
         <p
           style={{
