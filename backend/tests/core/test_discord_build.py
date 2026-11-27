@@ -307,6 +307,26 @@ class TestChecks:
         assert await _build(db, link, scope) is None
 
 
+async def test_a_build_finding_lobot_gone_marks_the_server_removed(
+    db, link, guild, scope, mock_discord_rest
+):
+    from unittest.mock import Mock
+
+    import discord
+
+    from app.core.discord.links import NOT_IN_SERVER
+
+    async def unknown_guild(guild_id):
+        raise discord.NotFound(
+            Mock(status=404, reason="Not Found"), {"message": "Unknown Guild", "code": 10004}
+        )
+
+    mock_discord_rest.guild = unknown_guild
+    assert await _build(db, link, scope) == NOT_IN_SERVER
+    assert link.bot_removed_at is not None
+    assert link.last_build_status == "failed"
+
+
 class TestResume:
     async def test_interrupted_build_resumes_without_duplicates(
         self, db, link, guild, scope, mock_discord_rest

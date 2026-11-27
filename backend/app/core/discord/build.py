@@ -46,6 +46,7 @@ from app.core.discord.layout import (
     event_name_with_division,
     event_role_key,
 )
+from app.core.discord.links import NOT_IN_SERVER, mark_removed
 from app.core.discord.marks import mark_full
 from app.core.oauth import frontend_redirect
 from app.core.tournament.zones import resolve_track_zones
@@ -1694,6 +1695,7 @@ async def run_build(
     """Runs a build the caller already claimed, and records how it ended. Returns the error, if
     it failed."""
     error = None
+    gone = False
     store = Store(session_scope)
     try:
         async with kept_alive(link_id, store.heartbeat):
@@ -1705,12 +1707,19 @@ async def run_build(
             else:
                 await execute(plan, snapshot, live, discord_rest.get_rest(), store, progress)
     except Exception as exc:
-        discord_rest.log_failure(log, "Discord build for link %s failed", link_id)
-        error = str(exc) or type(exc).__name__
+        gone = discord_rest.unknown_guild(exc)
+        if gone:
+            error = NOT_IN_SERVER
+        else:
+            discord_rest.log_failure(log, "Discord build for link %s failed", link_id)
+            error = str(exc) or type(exc).__name__
 
     def finish() -> None:
         with session_scope() as db:
             finish_build(db, link_id, error)
+            link = db.get(DiscordGuildLink, link_id)
+            if gone and link is not None:
+                mark_removed(db, link)
 
     await asyncio.to_thread(finish)
     return error

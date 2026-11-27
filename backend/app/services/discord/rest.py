@@ -18,6 +18,7 @@ GUILD_TEXT = 0
 GUILD_CATEGORY = 4
 ROLE_OVERWRITE = 0
 MEMBER_OVERWRITE = 1
+UNKNOWN_GUILD = 10004
 # Covers waiting out one full role-create window (Discord reports 691 seconds) with room to spare.
 REQUEST_DEADLINE = 15 * 60.0
 
@@ -29,6 +30,12 @@ class DiscordWaitTooLong(Exception):
             f"Discord kept lobot waiting over {minutes} minutes, most likely a rate limit. "
             "Try again later."
         )
+
+
+def unknown_guild(exc: BaseException) -> bool:
+    """Whether Discord says the server doesn't exist for the bot, as it does once the server is
+    deleted or the bot removed from it."""
+    return isinstance(exc, discord.NotFound) and exc.code == UNKNOWN_GUILD
 
 
 def log_failure(logger: logging.Logger, message: str, *args: object) -> None:

@@ -4,7 +4,9 @@ a real build of the shared test server (tests/core/conftest.py)."""
 import asyncio
 import threading
 from datetime import timedelta
+from unittest.mock import Mock
 
+import discord
 import pytest
 from sqlalchemy import event as sa_event
 
@@ -795,6 +797,24 @@ class TestDrain:
         db.commit()
         await _sync(scope)
         db.refresh(built)
+        assert built.last_sync_error is None
+        assert _marks(db) == []
+
+    async def test_a_server_lobot_left_unseen_stops_syncing(
+        self, db, built, scope, mock_discord_rest, monkeypatch
+    ):
+        async def unknown_guild(guild_id):
+            raise discord.NotFound(
+                Mock(status=404, reason="Not Found"), {"message": "Unknown Guild", "code": 10004}
+            )
+
+        monkeypatch.setattr(mock_discord_rest, "guild", unknown_guild)
+        mark_full(db, built.id)
+        mark_member(db, built.id, TD_DISCORD)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.bot_removed_at is not None
         assert built.last_sync_error is None
         assert _marks(db) == []
 

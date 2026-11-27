@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core.discord import build
 from app.core.discord.eligibility import DesiredMember, desired_members
-from app.core.discord.links import CHANNEL, link_for_guild
+from app.core.discord.links import CHANNEL, link_for_guild, mark_removed
 from app.core.discord.reconcile import (
     above_bot_message,
     all_members,
@@ -186,6 +186,9 @@ class Syncer:
                     accounts = [m.discord_user_id for m in marks if m.kind == "member"]
                     await self._sync_members(link_id, accounts, above_bot)
         except Exception as exc:
+            if discord_rest.unknown_guild(exc):
+                await self._in_db(lambda db: _gone(db, link_id, marks, claimed_at))
+                return
             discord_rest.log_failure(log, "Discord sync for link %s failed", link_id)
             error = exc
             await self._in_db(lambda db: _fail(db, link_id, marks, error))
@@ -221,6 +224,9 @@ class Syncer:
                 link_id, [m.discord_user_id for m in marks if m.discord_user_id is not None]
             )
         except Exception as exc:
+            if discord_rest.unknown_guild(exc):
+                await self._in_db(lambda db: _gone(db, link_id, marks, claimed_at))
+                return
             discord_rest.log_failure(log, "Discord member sync for link %s failed", link_id)
             error = exc
             await self._in_db(lambda db: _fail(db, link_id, marks, error))
@@ -388,6 +394,16 @@ def _fail(db: Session, link_id: int, marks: list[Claimed], exc: Exception) -> No
     link = db.get(DiscordGuildLink, link_id)
     if link is not None:
         link.last_sync_error = (str(exc) or type(exc).__name__)[:2000]
+
+
+def _gone(db: Session, link_id: int, marks: list[Claimed], claimed_at: datetime) -> None:
+    """Discord says lobot isn't in the server: it was removed, or the server deleted, while no
+    gateway was there to see it."""
+    log.info("lobot is no longer in the server for link %s; syncing stops", link_id)
+    _settle(db, [m.id for m in marks], claimed_at)
+    link = db.get(DiscordGuildLink, link_id)
+    if link is not None:
+        mark_removed(db, link)
 
 
 class Leaver(Protocol):

@@ -341,7 +341,7 @@ function TrackDiscord({
         <div style={{ margin: "12px 0" }}>
           <Banner
             variant="warning"
-            message="lobot was removed from this server, so syncing has stopped. Add it back to resume."
+            message="lobot was removed from this server, or the server was deleted, so syncing has stopped. Add lobot back to resume, or unlink to use a different server."
             action={
               <Button size="sm" variant="secondary" onClick={install} disabled={locked}>
                 Add lobot back
@@ -424,7 +424,14 @@ function TrackDiscord({
           tournamentId={tournamentId}
           trackId={track.id}
           reset={link.built_at !== null}
-          onClose={() => setPreviewing(false)}
+          onClose={() => {
+            setPreviewing(false);
+            // A failed preview can find lobot gone from the server, which the status now says.
+            discordApi
+              .status(tournamentId, track.id)
+              .then(onChange)
+              .catch(() => {});
+          }}
           onStarted={onChange}
         />
       )}

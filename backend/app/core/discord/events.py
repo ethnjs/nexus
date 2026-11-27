@@ -5,17 +5,15 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
-from app.core.discord.links import link_for_guild
+from app.core.discord.links import link_for_guild, mark_removed
 from app.core.discord.marks import mark_full, mark_member, mark_structure
 from app.models.discord import DiscordGuildLink, DiscordManagedChannel, DiscordManagedRole
-from app.models.models import utcnow
 
 
 def mark_bot_removed(db: Session, guild_id: int) -> None:
     link = link_for_guild(db, guild_id)
     if link is not None and link.bot_removed_at is None:
-        link.bot_removed_at = utcnow()
-        db.commit()
+        mark_removed(db, link)
 
 
 def rename_guild(db: Session, guild_id: int, name: str) -> None:

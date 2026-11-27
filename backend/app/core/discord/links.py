@@ -9,9 +9,19 @@ from sqlalchemy.orm import Session
 
 from app.core.tournament.permissions import MANAGE_DISCORD, MANAGE_TOURNAMENT, has_permission
 from app.models.discord import DiscordGuildLink
-from app.models.models import OAuthIdentity, OAuthProvider, Tournament, TournamentTrack, User
+from app.models.models import (
+    OAuthIdentity,
+    OAuthProvider,
+    Tournament,
+    TournamentTrack,
+    User,
+    utcnow,
+)
 
 CHANNEL = "discord_sync"
+NOT_IN_SERVER = (
+    "lobot isn't in this Discord server any more: it was removed, or the server was deleted."
+)
 
 
 def user_label(user: User) -> str:
@@ -33,6 +43,15 @@ def require_track_installable(db: Session, track: TournamentTrack) -> None:
     link = link_for_track(db, track.id)
     if link is not None and link.bot_removed_at is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "This track already has a Discord server")
+
+
+def mark_removed(db: Session, link: DiscordGuildLink) -> None:
+    """Records that lobot is no longer in the server, removed or the server deleted, which stops
+    its syncing until it's added back. Commits."""
+    if link.bot_removed_at is None:
+        link.bot_removed_at = utcnow()
+    link.last_sync_error = None
+    db.commit()
 
 
 def notify_leave(db: Session, guild_id: int) -> None:

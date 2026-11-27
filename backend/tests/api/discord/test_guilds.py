@@ -713,3 +713,25 @@ class TestBuildRoute:
         res = self._build(client, td_tournament.id, track_id)
         assert res.status_code == 502
         assert "Missing Access" in res.json()["detail"]
+
+    def test_a_server_lobot_left_unseen_is_marked_removed(
+        self, client, db, discord_on, td_user, td_tournament, track_id, mock_discord_rest
+    ):
+        from unittest.mock import Mock
+
+        import discord
+
+        # What Discord answers once the server is deleted or lobot was kicked.
+        async def unknown_guild(guild_id):
+            raise discord.NotFound(
+                Mock(status=404, reason="Not Found"), {"message": "Unknown Guild", "code": 10004}
+            )
+
+        mock_discord_rest.guild = unknown_guild
+        link = _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        res = self._build(client, td_tournament.id, track_id)
+        assert res.status_code == 409
+        assert "isn't in this Discord server" in res.json()["detail"]
+        db.refresh(link)
+        assert link.bot_removed_at is not None

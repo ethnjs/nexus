@@ -26,10 +26,12 @@ from app.core.auth import get_active_session
 from app.core.discord import build as discord_build
 from app.core.discord.deps import require_discord_enabled
 from app.core.discord.links import (
+    NOT_IN_SERVER,
     InstallRefused,
     check_install,
     link_for_guild,
     link_for_track,
+    mark_removed,
     notify_leave,
     require_track_installable,
     user_label,
@@ -370,6 +372,9 @@ def build_track_discord(
                 )
             )
         except discord.HTTPException as exc:
+            if discord_rest.unknown_guild(exc):
+                mark_removed(db, link)
+                raise HTTPException(status.HTTP_409_CONFLICT, NOT_IN_SERVER) from None
             raise HTTPException(
                 status.HTTP_502_BAD_GATEWAY, f"Couldn't read the Discord server: {exc.text}"
             ) from None
