@@ -32,7 +32,7 @@ import {
   presetIncompleteMessage,
 } from "@/lib/forms/tournament/presets";
 import { toPlainText } from "@/lib/markdown";
-import { isSimpleMode } from "@/lib/useTournament";
+import { isSimpleMode, soleTrackOf } from "@/lib/useTournament";
 
 type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
 
@@ -223,7 +223,7 @@ export function PresetPopover({
     // you have" control behind. Availability is the exception: only a
     // competition day can hold shifts, so a sole *cosmetic* track is not an
     // answer for it.
-    const soleTrack = tracks.length === 1 ? tracks[0] : undefined;
+    const soleTrack = soleTrackOf(tracks);
     const soleAvailabilityTrack = soleTrack?.is_primary ? soleTrack : undefined;
     const fieldKey =
       kind === "availability"

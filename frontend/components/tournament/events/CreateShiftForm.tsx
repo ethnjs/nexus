@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
-import { soleTrackId, TrackPicker } from "@/components/tournament/TrackPicker";
+import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { TimeRangePicker } from "@/components/ui/TimeRangePicker";
@@ -13,6 +13,7 @@ import {
   tournamentShiftsApi,
 } from "@/lib/api";
 import { fromDayAndTime } from "@/lib/timeFormat";
+import { soleTrackOf } from "@/lib/useTournament";
 
 interface CreateShiftFormProps {
   tournamentId: number;
@@ -34,7 +35,7 @@ export function CreateShiftForm({
   onCreated,
   onCancel,
 }: CreateShiftFormProps) {
-  const [trackId, setTrackId] = useState<number | null>(soleTrackId(tracks));
+  const [trackId, setTrackId] = useState<number | null>(soleTrackOf(tracks)?.id ?? null);
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");

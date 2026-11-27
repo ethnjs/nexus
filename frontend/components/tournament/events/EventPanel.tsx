@@ -56,7 +56,7 @@ import {
 } from "@/lib/seasonDefaults";
 import { formatTime } from "@/lib/timeFormat";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { isSimpleMode, useTournament } from "@/lib/useTournament";
+import { isSimpleMode, soleTrackOf, useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 
 // Exported so the caller registering this panel in the layout slot reserves
@@ -189,7 +189,7 @@ export function EventPanel({
   // and becomes the real row once a create lands — so the Shifts section
   // can appear without closing the panel.
   const [current, setCurrent] = useState<TournamentEvent | null>(event);
-  const soleTrackId = isSimpleMode(tracks) ? tracks[0].id : null;
+  const soleTrackId = soleTrackOf(tracks)?.id ?? null;
   const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event, soleTrackId));
 
   const [saving, setSaving] = useState(false);

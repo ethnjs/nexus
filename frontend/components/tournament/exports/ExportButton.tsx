@@ -25,6 +25,7 @@ import {
 } from "@/lib/exports/run";
 import { emptyFilter } from "@/lib/filters/model";
 import { useToast } from "@/lib/useToast";
+import { soleTrackOf } from "@/lib/useTournament";
 
 const TORUS_OPTIONS = Object.entries(
   EXTERNAL_SYSTEMS.find((s) => s.field === "torus_role")!.roles,
@@ -144,7 +145,7 @@ export function ExportButton({
   }
 
   // The track a built-in should start from: the page's tab, else the only one.
-  const soleTrackId = tracks.length === 1 ? tracks[0].id : null;
+  const soleTrackId = soleTrackOf(tracks)?.id ?? null;
 
   function renderPanel(panel: Panel, close: () => void): ReactNode {
     switch (panel.id) {

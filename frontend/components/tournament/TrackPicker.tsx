@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Dropdown } from "@/components/ui/Dropdown";
 import type { TournamentTrack } from "@/lib/api";
+import { soleTrackOf } from "@/lib/useTournament";
 
 /**
  * Picks one of a tournament's tracks.
@@ -56,7 +57,8 @@ export function TrackPicker({
   // init-time guess leaves the field stuck empty behind a locked control.
   // biome-ignore lint/correctness/useExhaustiveDependencies: onChange is a fresh closure on most renders
   useEffect(() => {
-    if (value === null && tracks.length === 1) onChange(tracks[0].id);
+    const sole = soleTrackOf(tracks);
+    if (value === null && sole) onChange(sole.id);
     // onChange is a fresh closure on most renders; re-running on it would
     // fight any caller that resets the value deliberately.
   }, [tracks, value]);
@@ -76,10 +78,4 @@ export function TrackPicker({
       helper={helper}
     />
   );
-}
-
-/** The track to preselect, for callers that need the id itself rather than a
- *  control — a draft's initial state, say. Null when there is a real choice. */
-export function soleTrackId(tracks: TournamentTrack[]): number | null {
-  return tracks.length === 1 ? tracks[0].id : null;
 }

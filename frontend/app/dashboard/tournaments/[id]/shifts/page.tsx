@@ -92,6 +92,7 @@ import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useToast } from "@/lib/useToast";
+import { soleTrackOf } from "@/lib/useTournament";
 
 // Select / Label / Track / Date / Start / End / Duration / Events / Actions —
 // every column, always (no picker: a shift has few enough fields to show them
@@ -411,7 +412,7 @@ export default function ShiftsPage() {
           shift={null}
           tracks={tracks}
           events={events}
-          defaultTrackId={filteredTrackId ?? (tracks.length === 1 ? tracks[0].id : null)}
+          defaultTrackId={filteredTrackId ?? soleTrackOf(tracks)?.id ?? null}
           locked={locked}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}

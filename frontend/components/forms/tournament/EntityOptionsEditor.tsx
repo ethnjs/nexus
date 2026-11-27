@@ -29,7 +29,7 @@ import { eventNameWithDivision } from "@/lib/eventDisplay";
 import type { BranchTarget } from "@/lib/forms/branching";
 import { optionTrackAssignments } from "@/lib/forms/tournament/presets";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
-import { isSimpleMode } from "@/lib/useTournament";
+import { soleTrackOf } from "@/lib/useTournament";
 
 type EntityFieldKey = "availability" | "event_preference" | "track_status";
 type Entity = TournamentShift | TournamentEvent;
@@ -150,7 +150,7 @@ export function EntityOptionsEditor({
   const tracks = tournament.tracks.filter((track) => !track.is_archived);
   // A simple tournament's one track has nothing to choose, so each option
   // just says what it sets that track to.
-  const soleTrack = isSimpleMode(tracks) ? tracks[0] : null;
+  const soleTrack = soleTrackOf(tracks);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const existingEventIds = useMemo(
