@@ -141,9 +141,9 @@ def reassign_track_role(
     old_role_id: int,
     new_role: TournamentRole,
     actor: User,
-) -> None:
+) -> list[TournamentTrackAssignment]:
     """Move this track's bars whose only role is `old_role_id` to `new_role`,
-    without committing.
+    without committing, and return the rows moved.
 
     A bar is one member on one event. One that holds any other role as well
     was set up by hand, so it is left alone. Every member is rank-checked
@@ -174,6 +174,7 @@ def reassign_track_role(
 
     for row in moving:
         row.role_id = new_role.id
+    return moving
 
 
 def detach_shifts_from_assignments(
