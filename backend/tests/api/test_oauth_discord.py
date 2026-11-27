@@ -146,12 +146,12 @@ class TestDiscordCallback:
     def test_second_discord_account_is_refused(
         self, client, db, discord_on, td_user, mock_discord_http
     ):
-        _add_identity(db, td_user, account_id="first")
+        _add_identity(db, td_user, account_id="201")
         login(client, "td@test.com", "tdpass")
-        res = _link(client, mock_discord_http, user_id="second")
+        res = _link(client, mock_discord_http, user_id="202")
         assert res.headers["location"].endswith("/connect/discord?error=discord_link_exists")
         identity = db.query(OAuthIdentity).filter_by(user_id=td_user.id).one()
-        assert identity.provider_account_id == "first"
+        assert identity.provider_account_id == "201"
 
     def test_relinking_the_same_account_succeeds(
         self, client, db, discord_on, td_user, mock_discord_http, mock_send_email

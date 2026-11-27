@@ -274,10 +274,9 @@ def discord_callback(
     username = profile.get("username")
 
     try:
-        link_identity(db, session_row.user, OAuthProvider.discord, account_id, username=username)
-        # link_identity commits the link itself, so the marks follow in their own commit.
+        # Before link_identity, so its commit carries the marks with the link.
         mark_account_everywhere(db, session_row.user_id, int(account_id))
-        db.commit()
+        link_identity(db, session_row.user, OAuthProvider.discord, account_id, username=username)
         send_in_background(
             background_tasks, send_discord_linked_notice, session_row.user.email, username
         )
