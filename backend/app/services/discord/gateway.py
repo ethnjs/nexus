@@ -9,6 +9,7 @@ from typing import Protocol
 import discord
 
 from app.services.discord.commands import sync_commands
+from app.services.discord.rest import log_failure
 
 log = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ class Gateway:
                 return
             except Exception:
                 # discord.py retries a dropped connection itself, but not a failed login.
-                log.exception("The Discord gateway stopped; starting again in %.0f s", delay)
+                log_failure(log, "The Discord gateway stopped; starting again in %.0f s", delay)
             finally:
                 await client.close()
             await asyncio.sleep(delay)

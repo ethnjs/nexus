@@ -3,6 +3,8 @@ and retries. Every call NEXUS makes goes through one DiscordRest, from get_rest(
 replace that one function with an in-memory server."""
 
 import asyncio
+import logging
+import sys
 from collections.abc import Awaitable
 from typing import Any
 
@@ -27,6 +29,16 @@ class DiscordWaitTooLong(Exception):
             f"Discord kept lobot waiting over {minutes} minutes, most likely a rate limit. "
             "Try again later."
         )
+
+
+def log_failure(logger: logging.Logger, message: str, *args: object) -> None:
+    """Logs the exception being handled: one line when Discord couldn't be reached at all (DNS,
+    refused connections, socket timeouts), which an outage repeats on every retry; otherwise a
+    traceback."""
+    if isinstance(sys.exc_info()[1], OSError):
+        logger.warning(f"{message}: couldn't reach Discord (%s)", *args, sys.exc_info()[1])
+    else:
+        logger.exception(message, *args)
 
 
 async def _within_deadline[T](request: Awaitable[T]) -> T:

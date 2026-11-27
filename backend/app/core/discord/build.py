@@ -1705,7 +1705,7 @@ async def run_build(
             else:
                 await execute(plan, snapshot, live, discord_rest.get_rest(), store, progress)
     except Exception as exc:
-        log.exception("Discord build for link %s failed", link_id)
+        discord_rest.log_failure(log, "Discord build for link %s failed", link_id)
         error = str(exc) or type(exc).__name__
 
     def finish() -> None:

@@ -186,7 +186,7 @@ class Syncer:
                     accounts = [m.discord_user_id for m in marks if m.kind == "member"]
                     await self._sync_members(link_id, accounts, above_bot)
         except Exception as exc:
-            log.exception("Discord sync for link %s failed", link_id)
+            discord_rest.log_failure(log, "Discord sync for link %s failed", link_id)
             error = exc
             await self._in_db(lambda db: _fail(db, link_id, marks, error))
             return
@@ -221,7 +221,7 @@ class Syncer:
                 link_id, [m.discord_user_id for m in marks if m.discord_user_id is not None]
             )
         except Exception as exc:
-            log.exception("Discord member sync for link %s failed", link_id)
+            discord_rest.log_failure(log, "Discord member sync for link %s failed", link_id)
             error = exc
             await self._in_db(lambda db: _fail(db, link_id, marks, error))
             return
@@ -241,7 +241,7 @@ class Syncer:
                 errors.append(exc)
                 break
             except Exception as exc:
-                log.exception("Discord member sync for link %s failed", link_id)
+                discord_rest.log_failure(log, "Discord member sync for link %s failed", link_id)
                 failed.append(mark)
                 errors.append(exc)
 
@@ -340,7 +340,7 @@ async def _each_member[T](
         except discord_rest.DiscordWaitTooLong:
             raise
         except Exception as exc:
-            log.exception("Discord sync of one member for link %s failed", link_id)
+            discord_rest.log_failure(log, "Discord sync of one member for link %s failed", link_id)
             error = exc
     if error is not None:
         raise error
