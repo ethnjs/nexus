@@ -186,7 +186,7 @@ def _cta_url(path: str, token: str | None = None) -> str:
 # Sending
 # ---------------------------------------------------------------------------
 
-# Resend's limit is per second and shared by the whole team, so a staff invite
+# Resend's limit is per second and shared by the whole team, so an invite email
 # batch or concurrent workers can briefly exceed it.
 _RATE_LIMIT_ATTEMPTS = 4
 
@@ -421,20 +421,23 @@ async def send_account_setup_email(to: str, token: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tournament staff invite
+# Tournament invite
 # ---------------------------------------------------------------------------
 
 
-async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) -> None:
+async def send_invite_email(
+    to: str, tournament_name: str, join_url: str, role_labels: list[str]
+) -> None:
+    paragraphs: list[_Paragraph] = [f"You've been invited to join {tournament_name} on NEXUS."]
+    if role_labels:
+        paragraphs.append(f"You'll join as {', '.join(role_labels)}.")
+    paragraphs.append("Use the link below to join.")
     await _send_email(
         to,
         _Email(
-            subject=f"You're invited to help run {tournament_name}",
-            heading=f"You're invited to help run {tournament_name}",
-            paragraphs=[
-                f"You've been invited to join the staff for {tournament_name} on NEXUS.",
-                "Use the link below to join.",
-            ],
+            subject=f"You're invited to join {tournament_name}",
+            heading=f"You're invited to join {tournament_name}",
+            paragraphs=paragraphs,
             cta_label="Join tournament",
             cta_url=join_url,
             footnote=f"If you weren't expecting this, you can ignore this email, or email {_SUPPORT_EMAIL} to stop receiving invites.",
@@ -442,12 +445,12 @@ async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) 
     )
 
 
-async def send_staff_invite_emails(
-    to_emails: list[str], tournament_name: str, join_url: str
+async def send_invite_emails(
+    to_emails: list[str], tournament_name: str, join_url: str, role_labels: list[str]
 ) -> list[str]:
     """Sends one invite per address in parallel (not BCC) and returns the addresses that failed."""
     results = await asyncio.gather(
-        *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
+        *(send_invite_email(email, tournament_name, join_url, role_labels) for email in to_emails),
         return_exceptions=True,
     )
     return [

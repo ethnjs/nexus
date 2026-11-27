@@ -11,10 +11,9 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.core.tournament.audit import STAFF_INVITE_SENT
 from app.models.models import (
-    AuditLogEntry,
     Form,
+    JoinCode,
     Tournament,
     TournamentEvent,
     TournamentForm,
@@ -31,15 +30,8 @@ def get_checklist(db: Session, tournament: Tournament) -> dict:
     has_events = exists(TournamentEvent)
     has_shifts = exists(TournamentShift)
 
-    has_invite = (
-        db.query(AuditLogEntry.id)
-        .filter(
-            AuditLogEntry.tournament_id == tournament.id,
-            AuditLogEntry.action == STAFF_INVITE_SENT,
-        )
-        .first()
-        is not None
-    )
+    # Any invite counts, live or not: sharing the link is inviting.
+    has_invite = exists(JoinCode)
 
     # A form of any kind, in any state — this is the "you've opened the builder
     # and made something" step.
@@ -69,7 +61,7 @@ def get_checklist(db: Session, tournament: Tournament) -> dict:
     # availability questions to point at.
     items = [
         {"item_key": "roles", "label": "Set Up Roles", "complete": has_roles},
-        {"item_key": "invite_staff", "label": "Invite Staff", "complete": has_invite},
+        {"item_key": "invite", "label": "Create an Invite", "complete": has_invite},
         {"item_key": "events", "label": "Set Up Events", "complete": has_events},
         {"item_key": "shifts", "label": "Set Up Shifts", "complete": has_shifts},
         {"item_key": "first_form", "label": "Make Your First Form", "complete": has_form},

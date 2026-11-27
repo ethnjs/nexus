@@ -117,6 +117,23 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
           <Badge key={d}>{d}</Badge>
         ))}
       </div>
+
+      {preview.roles.length > 0 && (
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: "13px",
+            color: "var(--color-text-secondary)",
+            textAlign: "center",
+            marginTop: "6px",
+          }}
+        >
+          You&rsquo;ll join as{" "}
+          <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
+            {preview.roles.join(", ")}
+          </span>
+        </p>
+      )}
     </div>
   );
 }

@@ -7,7 +7,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models.models import ChapterMembership, JoinCode, TournamentMembership
+from app.models.models import (
+    ChapterMembership,
+    JoinCode,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrackAssignment,
+)
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from tests.conftest import grant_role, login
 
@@ -105,6 +111,34 @@ def test_join_tournament_success_creates_interested_membership(
 
     db.refresh(join_code)
     assert join_code.use_count == 1
+
+
+def test_join_tournament_grants_invite_roles_tournament_wide(
+    client, td_user, td_tournament, other_user, db
+):
+    """A role that gained permissions after it was attached is neither previewed nor granted."""
+    roles = {
+        r.label: r
+        for r in db.query(TournamentRole).filter(
+            TournamentRole.tournament_id == td_tournament.id,
+            TournamentRole.label.in_(["Volunteer", "Test Writer"]),
+        )
+    }
+    make_tournament_join_code(
+        db, td_tournament.id, td_user.id, code="ROLES123", roles=list(roles.values())
+    )
+    roles["Test Writer"].permissions = ["manage_events"]
+    db.commit()
+
+    assert client.get("/join/preview/?code=ROLES123").json()["roles"] == ["Volunteer"]
+
+    login(client, "other@test.com", "otherpass")
+    membership_id = client.post("/join/?code=ROLES123").json()["membership_id"]
+
+    assignments = db.query(TournamentTrackAssignment).filter_by(membership_id=membership_id).all()
+    assert [(a.role_id, a.is_tournament_wide) for a in assignments] == [
+        (roles["Volunteer"].id, True)
+    ]
 
 
 def test_join_tournament_rejects_deactivated_code(client, td_user, td_tournament, other_user, db):

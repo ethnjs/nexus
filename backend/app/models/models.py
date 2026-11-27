@@ -1061,6 +1061,25 @@ class JoinCode(Base):
         "AlumniChapter", back_populates="join_codes"
     )
     creator: Mapped["User | None"] = relationship("User", back_populates="join_codes")
+    # Granted tournament-wide on redeem. Only roles with no permissions can be
+    # attached, and one that gains permissions later is skipped at redeem.
+    roles: Mapped[list["TournamentRole"]] = relationship(
+        "TournamentRole", secondary="join_code_roles", order_by="TournamentRole.rank"
+    )
+
+
+# ---------------------------------------------------------------------------
+# JoinCodeRole — bridge table: JoinCode <-> TournamentRole.
+# ---------------------------------------------------------------------------
+class JoinCodeRole(Base):
+    __tablename__ = "join_code_roles"
+
+    join_code_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("join_codes.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,6 @@ import { ArchiveTournamentModal } from "@/components/tournament/settings/Archive
 import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
 import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
 import { SettingsPageHeader } from "@/components/tournament/settings/SettingsPageHeader";
-import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
 import { TracksSection, useTrackEditor } from "@/components/tournament/settings/TracksSection";
 import { TransferOwnershipModal } from "@/components/tournament/settings/TransferOwnershipModal";
 import { TrackFields } from "@/components/tournament/TrackFields";
@@ -86,7 +85,6 @@ export default function GeneralSettingsPage() {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
   const [pendingAgeToggle, setPendingAgeToggle] = useState<
     "collect_is_over_18" | "collect_is_over_21" | null
   >(null);
@@ -327,27 +325,6 @@ export default function GeneralSettingsPage() {
         <TracksSection editor={trackEditor} locked={isArchived} autoExpandKey={addedTrackKey} />
       )}
 
-      {isOwnerOrAdmin && (
-        <SettingsSection title="Invites">
-          <SettingsRow
-            label="Invite staff"
-            helper={isArchived ? "Unarchive first to invite staff." : "Send a join link by email."}
-            contentStyle={{ display: "flex", justifyContent: "flex-end" }}
-            last
-          >
-            <Button
-              type="button"
-              variant="secondary"
-              size="md"
-              disabled={isArchived}
-              onClick={() => setShowInviteModal(true)}
-            >
-              Invite staff
-            </Button>
-          </SettingsRow>
-        </SettingsSection>
-      )}
-
       {canEdit && (
         <SettingsSection title="Visibility">
           <SettingsRow
@@ -554,10 +531,6 @@ export default function GeneralSettingsPage() {
             setShowArchiveModal(false);
           }}
         />
-      )}
-
-      {showInviteModal && (
-        <StaffInviteModal tournamentId={tournamentId} onClose={() => setShowInviteModal(false)} />
       )}
 
       {pendingAgeToggle && (

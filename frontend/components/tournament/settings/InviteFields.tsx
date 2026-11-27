@@ -11,9 +11,6 @@ interface InviteFieldsProps {
   onPresetChange: (value: string) => void;
 }
 
-// Label + expiry-preset fields for creating a new invite — shared between
-// CreateInviteModal and StaffInviteModal's "create new invite" branch.
-// Controlled from the parent, which owns submission.
 export function InviteFields({ label, onLabelChange, preset, onPresetChange }: InviteFieldsProps) {
   return (
     <>

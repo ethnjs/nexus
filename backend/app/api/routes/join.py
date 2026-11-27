@@ -9,7 +9,15 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.join_codes import is_join_code_expired
 from app.db.session import get_db
-from app.models.models import ChapterMembership, JoinCode, Tournament, TournamentMembership, User
+from app.models.models import (
+    ChapterMembership,
+    JoinCode,
+    Tournament,
+    TournamentMembership,
+    TournamentRole,
+    TournamentTrackAssignment,
+    User,
+)
 from app.schemas.join_code import (
     JoinPreviewChapter,
     JoinPreviewResponse,
@@ -78,7 +86,13 @@ def _preview_tournament_code(join_code: JoinCode, db: Session) -> JoinPreviewTou
         is_verified=tournament.is_verified,
         collect_is_over_18=tournament.collect_is_over_18,
         collect_is_over_21=tournament.collect_is_over_21,
+        roles=[r.label for r in _grantable_roles(join_code)],
     )
+
+
+def _grantable_roles(join_code: JoinCode) -> list[TournamentRole]:
+    # A role that gained permissions after it was attached isn't handed out by link.
+    return [r for r in join_code.roles if not r.permissions]
 
 
 def _preview_chapter_code(join_code: JoinCode, db: Session) -> JoinPreviewChapter:
@@ -129,8 +143,8 @@ def _redeem_tournament_code(
     db: Session,
     age_disclosure_consent: bool,
 ) -> JoinRedeemResponse:
-    """Creates a bare TournamentMembership with no roles — staff assign roles
-    afterward, and per-track participation comes from form write-through."""
+    """Creates a TournamentMembership holding the invite's roles tournament-wide.
+    Per-track participation comes from form write-through."""
     existing = (
         db.query(TournamentMembership)
         .filter(
@@ -166,6 +180,10 @@ def _redeem_tournament_code(
     if collects_age_flag:
         membership.age_disclosure = "consented"
         membership.age_disclosure_at = datetime.now(UTC)
+    membership.track_assignments = [
+        TournamentTrackAssignment(role_id=role.id, is_tournament_wide=True)
+        for role in _grantable_roles(join_code)
+    ]
     join_code.use_count += 1
 
     try:

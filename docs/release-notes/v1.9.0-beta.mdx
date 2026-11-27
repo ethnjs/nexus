@@ -1,0 +1,38 @@
+---
+title: v1.9.0-beta
+description: Invites can give roles to the people who join with them, and any invite can be emailed from the Invites page
+date: 2026-11-26T12:00:00-08:00
+---
+
+Invites can now give roles to everyone who joins with them, so new members can start the forms meant for their role straight away. Any invite can also be emailed from the Invites page, and a new tab lists every invite email that's been sent.
+
+## What's new
+
+### Roles on invites
+
+Add roles to an invite, and everyone who joins with it gets those roles for the whole tournament. Forms that only certain roles can fill out, onboarding steps included, open for them as soon as they join.
+
+- Pick roles when you create an invite, or change them later in the **Roles** column on the Invites page. Changing them affects only people who join afterward.
+- Only roles without permissions can be added, so an invite link that gets shared too widely can't give out staff access. Give staff roles by hand on the Members page.
+- If a role on an invite is later given permissions, the invite shows a warning on that role and stops giving it out. Remove it from the invite or assign it by hand.
+- Adding or changing an invite's roles needs the Manage Members permission as well as Manage Invites.
+- The join page and the invite email both say which roles the invite gives.
+
+### Email any invite
+
+Every invite on the Invites page has a **Send email** button. Enter the addresses and NEXUS emails each person the invite's join link. After you create an invite, you're also asked whether to email it right away.
+
+- Anyone with the Manage Invites permission can send invite emails. Before, only the tournament owner could.
+- The email says "You're invited to join" the tournament, so it works for volunteers as well as staff.
+- People who are already members are highlighted and skipped.
+
+### Sent emails
+
+The Invites page has a new **Sent emails** tab listing everyone an invite was emailed to, which invite it was, who sent it and when. Invite emails sent before this release are included.
+
+## Worth knowing
+
+- **Invite staff** is gone from General settings and from the setup checklist. Use **Send email** on the Invites page instead.
+- The setup checklist step is now **Create an Invite**. It's done once the tournament has any invite, and clicking it opens the Invites page.
+- **Sent** means the email was accepted for delivery. An address that doesn't exist can still bounce afterward, and NEXUS doesn't show bounces yet.
+- In the audit log, staff invite entries are now called **Invite email sent**.

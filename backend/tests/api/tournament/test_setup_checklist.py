@@ -62,7 +62,7 @@ def test_checklist_fresh_tournament_has_everything_pending(client, td_user):
     assert "location" not in statuses
     # Dropped once buildings stopped being a planned feature.
     assert "buildings" not in statuses
-    for key in ("roles", "invite_staff", "events", "shifts", "first_form", "onboarding"):
+    for key in ("roles", "invite", "events", "shifts", "first_form", "onboarding"):
         assert statuses[key] == "not_started"
 
     assert data["completed_count"] == 0
@@ -82,21 +82,17 @@ def test_checklist_roles_complete_after_apply_template(client, td_user):
     assert statuses["roles"] == "complete"
 
 
-def test_checklist_invite_staff_complete_after_invite(client, td_user, mock_send_email):
+def test_checklist_invite_complete_once_an_invite_exists(client, td_user):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
         "/tournaments/", json={"name": "Invited", **REQUIRED_FIELDS}
     ).json()["id"]
-    join_code = client.post(f"/tournaments/{tournament_id}/join-codes/", json={}).json()
-    client.post(
-        f"/tournaments/{tournament_id}/staff-invites/",
-        json={"join_code_id": join_code["id"], "emails": ["a@example.com"]},
-    )
+    url = f"/tournaments/{tournament_id}/setup-checklist/"
+    assert _checklist_by_key(client.get(url).json())["invite"] == "not_started"
 
-    statuses = _checklist_by_key(
-        client.get(f"/tournaments/{tournament_id}/setup-checklist/").json()
-    )
-    assert statuses["invite_staff"] == "complete"
+    client.post(f"/tournaments/{tournament_id}/join-codes/", json={})
+
+    assert _checklist_by_key(client.get(url).json())["invite"] == "complete"
 
 
 def test_checklist_requires_manage_tournament(client, td_user, other_tournament, db):

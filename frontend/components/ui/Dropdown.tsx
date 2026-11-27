@@ -1,6 +1,14 @@
 "use client";
 
-import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { IconChevronDown } from "./Icons";
 import { type ListOption, OptionList } from "./OptionList";
 
@@ -45,6 +53,12 @@ function toListOption(opt: DropdownOption, picked: string[], multiple: boolean):
       ? { checked: picked.includes(opt.value) }
       : { selected: picked.includes(opt.value) }),
   };
+}
+
+/** The first `count` labels, then "+N" for the rest. */
+function joinLabels(labels: string[], count: number): string {
+  const shown = labels.slice(0, count).join(", ");
+  return count < labels.length ? `${shown} +${labels.length - count}` : shown;
 }
 
 function matchesQuery(opt: DropdownOption, query: string): boolean {
@@ -195,11 +209,37 @@ export function Dropdown(props: DropdownProps) {
       ? item.options.map((o) => ({ ...toListOption(o, picked, multiple), group: item.group }))
       : [toListOption(item, picked, multiple)],
   );
+  // A trigger sized by its label has no box to overflow, so it keeps the short "first +N" form.
+  const fitsLabels = multiple && !fitContent && (fullWidth || !!width);
+  const pickedLabels = pickedOptions.map((o) => o.label);
+  const pickedKey = JSON.stringify(pickedLabels);
+  const labelBoxRef = useRef<HTMLSpanElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [fitCount, setFitCount] = useState(Number.POSITIVE_INFINITY);
+  useLayoutEffect(() => {
+    const box = labelBoxRef.current;
+    const measure = measureRef.current;
+    if (!fitsLabels || !box || !measure) return;
+    const labels: string[] = JSON.parse(pickedKey);
+    const fit = () => {
+      let count = labels.length;
+      for (; count > 1; count--) {
+        measure.textContent = joinLabels(labels, count);
+        if (measure.offsetWidth <= box.clientWidth) break;
+      }
+      setFitCount(count);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [fitsLabels, pickedKey]);
+
   const displayLabel = !selected
     ? placeholder
-    : pickedOptions.length > 1
-      ? `${selected.label} +${pickedOptions.length - 1}`
-      : selected.label;
+    : pickedLabels.length === 1
+      ? selected.label
+      : joinLabels(pickedLabels, fitsLabels ? Math.max(1, fitCount) : 1);
 
   /** Picks one option: replaces the value, or toggles it in multiple mode. */
   function pick(opt: DropdownOption) {
@@ -419,11 +459,32 @@ export function Dropdown(props: DropdownProps) {
             boxSizing: "border-box",
           }}
         >
-          <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          <span
+            ref={labelBoxRef}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              minWidth: 0,
+              ...(fitsLabels ? { flex: "1 1 0", position: "relative", overflow: "hidden" } : null),
+            }}
+          >
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {displayLabel}
             </span>
             {selected?.badge}
+            {fitsLabels && (
+              <span
+                ref={measureRef}
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  visibility: "hidden",
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
           </span>
           <IconChevronDown
             size={14}

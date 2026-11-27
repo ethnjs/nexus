@@ -23,10 +23,10 @@ Shapes differ between actions, and sometimes between variants of one action. Che
 | `role_updated` (single role) | `{"changes": [{"field": str, "old": any, "new": any}]}`. A `permissions` change is recorded as `{"field": "permissions", "added": [str], "removed": [str]}` instead. |
 | `role_updated` (bulk reorder) | `{"bulk_reorder": {"before": [{"role_id": int, "label": str, "rank": int}], "after": [...]}}`. Both sides list every role in the tournament, so unmoved roles anchor the diff. Logged only when a rank changed, and with no `target_id`. Older entries used `{"bulk_reorder": [{"role_id", "label", "old", "new"}]}`, listing changed roles only. |
 | `role_deleted` | `{"label": str, "rank": int, "members_affected": int}` |
-| `join_code_created` | `{"code": str, "label": str \| null, "expires_in_hours": int \| null, "expires_at": str \| null}` |
-| `join_code_updated` | Any of `{"changes": {"label": {"old", "new"}}, "add_hours": int, "expires_at": {"old", "new"}}`, only for what changed |
+| `join_code_created` | `{"code": str, "label": str \| null, "expires_in_hours": int \| null, "expires_at": str \| null, "roles": [str]}`. `roles` holds role labels and is missing from older entries. |
+| `join_code_updated` | Any of `{"changes": {"label": {"old", "new"}, "roles": {"old": [str], "new": [str]}}, "add_hours": int, "expires_at": {"old", "new"}}`, only for what changed |
 | `join_code_deactivated` | `{"code": str}` |
-| `staff_invite_sent` | `{"emails": [str], "join_code": str, "failed": [str]}`. `failed` is left out entirely when nothing failed. |
+| `invite_email_sent` | `{"join_code": str, "label": str \| null, "recipients": [{"email": str, "status": "sent" \| "failed"}]}`. `sent` means the email provider accepted the message, not that it was delivered. The Invites page's Sent emails tab reads these entries, so keep the shape stable. Entries logged as `staff_invite_sent` were rewritten to this shape by migration `a4c91d7e3b52`. |
 | `tournament_verified` | `{"is_verified": bool}` |
 | `tournament_archived` | `None` when archived by hand. The daily auto-archive job logs `{"auto_archived": true}`. |
 | `tournament_unarchived` | `None` |

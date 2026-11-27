@@ -1624,6 +1624,13 @@ export const rolesApi = {
 // Invites — nested under /tournaments/{id}/join-codes/ (backend route name
 // unchanged; "invite" is the frontend-facing term)
 // -------------------------------------------------------------------------
+export interface InviteRole {
+  id: number;
+  label: string;
+  // The role gained permissions after it was attached, so joining skips it.
+  has_permissions: boolean;
+}
+
 export interface Invite {
   id: number;
   code: string;
@@ -1632,16 +1639,37 @@ export interface Invite {
   created_at: string;
   use_count: number;
   creator: PersonRef;
+  roles: InviteRole[];
 }
 
 export interface InviteCreate {
   label?: string | null;
   expires_in_hours?: number | null;
+  role_ids?: number[];
 }
 
 export interface InviteUpdate {
   label?: string | null;
   add_hours?: number | null;
+  role_ids?: number[];
+}
+
+export interface InviteEmailResponse {
+  // "sent" means the email provider accepted it, not that it was delivered.
+  sent: string[];
+  failed: string[];
+}
+
+export interface InviteEmailRecipient {
+  email: string;
+  status: "sent" | "failed";
+  join_code_id: number | null;
+  join_code: string | null;
+  label: string | null;
+  invite_creator: PersonRef | null;
+  sender: PersonRef;
+  sender_name: string | null;
+  sent_at: string;
 }
 
 export const invitesApi = {
@@ -1653,28 +1681,12 @@ export const invitesApi = {
   // Deactivates the invite (one-way) — does not delete the row, history stays visible via GET.
   deactivate: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/join-codes/${id}/`),
-};
-
-// -------------------------------------------------------------------------
-// Staff invites — /tournaments/{id}/staff-invites/. Sends one email per
-// address pointing at an existing invite's join link. join_code_id must
-// already exist — if the caller wants a brand-new invite, create it via
-// invitesApi.create first and pass the resulting id here.
-// -------------------------------------------------------------------------
-export interface StaffInviteCreate {
-  join_code_id: number;
-  emails: string[];
-}
-
-export interface StaffInviteResponse {
-  join_code: Invite;
-  sent: string[];
-  failed: string[];
-}
-
-export const staffInvitesApi = {
-  send: (tournamentId: number, body: StaffInviteCreate) =>
-    api.post<StaffInviteResponse>(`/tournaments/${tournamentId}/staff-invites/`, body),
+  sendEmails: (tournamentId: number, id: number, emails: string[]) =>
+    api.post<InviteEmailResponse>(`/tournaments/${tournamentId}/join-codes/${id}/emails/`, {
+      emails,
+    }),
+  listEmails: (tournamentId: number) =>
+    api.get<InviteEmailRecipient[]>(`/tournaments/${tournamentId}/join-codes/emails/`),
 };
 
 // -------------------------------------------------------------------------
@@ -1790,6 +1802,8 @@ export interface JoinRedeemResponse {
 export interface JoinPreviewTournament extends TournamentPublic {
   type: "tournament";
   target_id: number;
+  // Labels of the roles joining grants.
+  roles: string[];
 }
 
 export interface JoinPreviewChapter {

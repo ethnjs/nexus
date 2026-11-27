@@ -201,7 +201,7 @@ def captured(monkeypatch):
 async def test_values_are_escaped_in_html(captured):
     name = '<a href="https://evil.example">Verify here</a>'
 
-    await email_service.send_staff_invite_email("v@example.com", name, "https://nexus.example/j")
+    await email_service.send_invite_email("v@example.com", name, "https://nexus.example/j", [])
 
     to, subject, text, html = captured.call_args.args
     assert '<a href="https://evil.example">' not in html
@@ -241,8 +241,8 @@ async def test_email_change_notice_says_when_the_undo_link_expires(captured):
 
 
 async def test_asterisks_in_a_value_stay_literal(captured):
-    await email_service.send_staff_invite_email(
-        "v@example.com", "**Big** Invitational", "https://nexus.example/j"
+    await email_service.send_invite_email(
+        "v@example.com", "**Big** Invitational", "https://nexus.example/j", []
     )
 
     _, subject, text, html = captured.call_args.args
