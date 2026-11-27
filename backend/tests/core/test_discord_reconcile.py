@@ -32,7 +32,7 @@ from app.models.models import (
     utcnow,
 )
 from app.services.discord.permissions import POSTING, STAFF_OVERWRITE, VIEW_CHANNEL
-from app.services.discord.rest import GUILD_CATEGORY, ROLE_OVERWRITE
+from app.services.discord.rest import GUILD_CATEGORY, ROLE_OVERWRITE, DiscordWaitTooLong
 from tests.conftest import grant_role
 from tests.core.conftest import GUILD_ID
 
@@ -800,6 +800,57 @@ class TestDrain:
         db.refresh(built)
         assert built.last_sync_error is None
         assert _marks(db) == []
+
+    def _two_runners(self, db, guild, td_tournament, track_id: int) -> None:
+        for discord_id in (6101, 6102):
+            volunteer = _user(db, f"runner{discord_id}@test.com", discord_id)
+            guild.join(discord_id)
+            grant_role(db, td_tournament, volunteer, "Runner", track_id=track_id)
+
+    @pytest.mark.parametrize("kinds", [("full",), ("structure", "member")])
+    async def test_one_failing_member_doesnt_stop_the_others(
+        self, db, built, guild, scope, td_tournament, mock_discord_rest, monkeypatch, kinds
+    ):
+        self._two_runners(db, guild, td_tournament, built.track_id)
+        add = mock_discord_rest.add_member_role
+
+        async def refuse_the_first(guild_id, user_id, role_id):
+            if user_id == 6101:
+                raise RuntimeError("Missing Permissions")
+            await add(guild_id, user_id, role_id)
+
+        monkeypatch.setattr(mock_discord_rest, "add_member_role", refuse_the_first)
+        if "full" in kinds:
+            mark_full(db, built.id)
+        else:
+            mark_structure(db, built.id)
+            mark_member(db, built.id, 6101)
+            mark_member(db, built.id, 6102)
+        db.commit()
+        await _sync(scope)
+        assert guild.member_role_names(6101) == set()
+        assert guild.member_role_names(6102) == {"Verified", "Runner"}
+        db.refresh(built)
+        assert built.last_sync_error == "Missing Permissions"
+        assert {m.attempts for m in db.query(DiscordSyncMark)} == {1}
+
+    async def test_a_long_rate_limit_wait_stops_the_sync_at_once(
+        self, db, built, guild, scope, td_tournament, mock_discord_rest, monkeypatch
+    ):
+        self._two_runners(db, guild, td_tournament, built.track_id)
+        tried: list[int] = []
+
+        async def rate_limited(guild_id, user_id, role_id):
+            tried.append(user_id)
+            raise DiscordWaitTooLong()
+
+        monkeypatch.setattr(mock_discord_rest, "add_member_role", rate_limited)
+        mark_full(db, built.id)
+        db.commit()
+        await _sync(scope)
+        assert tried == [6101]
+        db.refresh(built)
+        assert built.last_sync_error == str(DiscordWaitTooLong())
 
 
 class TestGatewayEvents:

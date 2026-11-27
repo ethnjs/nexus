@@ -10,7 +10,7 @@ picked up next time. A failure backs the marks off exponentially, up to an hour.
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -244,11 +244,14 @@ class Syncer:
             return
         snapshot, live, desired = await self._member_context(link_id, accounts)
         rest = discord_rest.get_rest()
-        for account in accounts:
+
+        async def sync(account: int | None) -> None:
             assert account is not None
             member = await rest.member(snapshot.guild_id, account)
             if member is not None:
                 await apply_member(rest, snapshot, live, member, desired.get(account), above_bot)
+
+        await _each_member(link_id, accounts, sync)
 
     async def _sync_everyone(self, link_id: int, above_bot: set[str]) -> None:
         snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
@@ -263,9 +266,31 @@ class Syncer:
             return desired_members(db, link, ids)
 
         desired = await self._in_db(desired_for)
-        for member in members:
+
+        async def sync(member: dict) -> None:
             wanted = desired.get(int(member["user"]["id"]))
             await apply_member(rest, snapshot, live, member, wanted, above_bot)
+
+        await _each_member(link_id, members, sync)
+
+
+async def _each_member[T](
+    link_id: int, members: Iterable[T], sync: Callable[[T], Awaitable[None]]
+) -> None:
+    """Syncs every member even if some fail, then raises the last failure so the marks back off
+    and the error is reported. A long rate-limit wait stops it at once: every later call would
+    wait too."""
+    error: Exception | None = None
+    for member in members:
+        try:
+            await sync(member)
+        except discord_rest.DiscordWaitTooLong:
+            raise
+        except Exception as exc:
+            log.exception("Discord sync of one member for link %s failed", link_id)
+            error = exc
+    if error is not None:
+        raise error
 
 
 def _link_state(db: Session, link_id: int) -> str:

@@ -174,7 +174,7 @@ Changing division merge or category grouping in NEXUS, or moving events between 
 | Unarchive; track deletion cancelled; lobot added back | full |
 | Buildings, zones, and permissions | Nothing; they matter only on `/reset` |
 
-- **The drain** (`drain.py`, leader only) wakes on `LISTEN discord_sync`, acting on each notification as it arrives, or every 5 seconds. It claims due marks with `FOR UPDATE SKIP LOCKED` and a 10-minute lease, so a leader that dies mid-reconcile leaves them to be retried. Success deletes only marks created before the claim, so a change made during a reconcile is kept. Failure backs off exponentially up to an hour and records `last_sync_error`. A full mark settles the server's other marks.
+- **The drain** (`drain.py`, leader only) wakes on `LISTEN discord_sync`, acting on each notification as it arrives, or every 5 seconds. It claims due marks with `FOR UPDATE SKIP LOCKED` and a 10-minute lease, so a leader that dies mid-reconcile leaves them to be retried. Success deletes only marks created before the claim, so a change made during a reconcile is kept. Failure backs off exponentially up to an hour and records `last_sync_error`. One member's failure doesn't stop the others: the sync finishes every member, then fails with the last error, except that `DiscordWaitTooLong` stops it at once. A full mark settles the server's other marks.
 - **Database work in async code always goes through `asyncio.to_thread`,** never on the event loop.
 - **The sweep** writes a full mark for every syncing server every 15 minutes, which reverts hand edits to members' roles and nicknames, and catches anything missed. For a quiet 300-member server that's a handful of Discord calls and no writes.
 
