@@ -282,10 +282,27 @@ class TestChecks:
         real = mock_discord_rest.create_role
 
         async def rate_limited(guild_id, **fields):
-            await asyncio.wait_for(asyncio.to_thread(beat.wait), 5)
+            assert await asyncio.to_thread(beat.wait, 5), "no heartbeat came"
             return await real(guild_id, **fields)
 
         mock_discord_rest.create_role = rate_limited
+        assert await _build(db, link, scope) is None
+
+    async def test_a_build_reading_a_rate_limited_server_keeps_its_claim(
+        self, db, link, guild, scope, mock_discord_rest, monkeypatch
+    ):
+        from app.core.discord import build as build_module
+
+        monkeypatch.setattr(build_module, "HEARTBEAT_SECONDS", 0)
+        beat = threading.Event()
+        monkeypatch.setattr(build_module.Store, "heartbeat", lambda self, link_id: beat.set())
+        real = mock_discord_rest.channels
+
+        async def rate_limited(guild_id):
+            assert await asyncio.to_thread(beat.wait, 5), "no heartbeat came"
+            return await real(guild_id)
+
+        mock_discord_rest.channels = rate_limited
         assert await _build(db, link, scope) is None
 
 

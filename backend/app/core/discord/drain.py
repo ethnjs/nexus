@@ -271,17 +271,16 @@ class Syncer:
         """The roles above the bot's, or None if a build started and holds the link."""
         if not await self._in_db(lambda db: build.claim_sync(db, link_id)):
             return None
+        store = build.Store(self._scope)
         try:
-            snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
-            rest = discord_rest.get_rest()
-            live = await build.fetch_live(rest, snapshot)
-            plan, above_bot = plan_structure(snapshot, live)
-            if plan.actions:
-                store = build.Store(self._scope)
-                await build.execute(
-                    plan, snapshot, live, rest, store, heartbeat=store.sync_heartbeat
-                )
-            return above_bot
+            async with build.kept_alive(link_id, store.sync_heartbeat):
+                snapshot = await self._in_db(lambda db: build.load_snapshot(db, link_id))
+                rest = discord_rest.get_rest()
+                live = await build.fetch_live(rest, snapshot)
+                plan, above_bot = plan_structure(snapshot, live)
+                if plan.actions:
+                    await build.execute(plan, snapshot, live, rest, store)
+                return above_bot
         finally:
             await self._in_db(lambda db: build.release_sync(db, link_id))
 

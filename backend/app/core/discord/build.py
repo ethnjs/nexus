@@ -15,7 +15,7 @@ import dataclasses
 import functools
 import logging
 from collections import Counter
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import count
@@ -1548,11 +1548,8 @@ async def execute(
     rest: DiscordRest,
     store: Store,
     progress: Progress | None = None,
-    *,
-    heartbeat: Callable[[int], None] | None = None,
 ) -> None:
-    """Runs the plan's actions in order, calling `heartbeat` every 30 seconds to keep the
-    caller's claim alive, including while an action waits out a rate limit."""
+    """Runs the plan's actions in order."""
     ctx = Context(
         rest=rest,
         store=store,
@@ -1561,24 +1558,30 @@ async def execute(
         role_ids=dict(snapshot.role_ids),
         channel_ids=dict(snapshot.channel_ids),
     )
-    beating = asyncio.create_task(_beat(ctx, heartbeat)) if heartbeat is not None else None
+    total = len(plan.actions)
+    for done, action in enumerate(plan.actions, start=1):
+        await action.run(ctx)
+        if progress is not None:
+            await progress(done, total)
+
+
+@contextlib.asynccontextmanager
+async def kept_alive(link_id: int, heartbeat: Callable[[int], None]) -> AsyncGenerator[None]:
+    """Calls `heartbeat` every 30 seconds while the body runs, so the claim it refreshes holds
+    even while a request waits out a rate limit."""
+
+    async def beat() -> None:
+        while True:
+            await asyncio.sleep(HEARTBEAT_SECONDS)
+            await asyncio.to_thread(heartbeat, link_id)
+
+    beating = asyncio.create_task(beat())
     try:
-        total = len(plan.actions)
-        for done, action in enumerate(plan.actions, start=1):
-            await action.run(ctx)
-            if progress is not None:
-                await progress(done, total)
+        yield
     finally:
-        if beating is not None:
-            beating.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await beating
-
-
-async def _beat(ctx: Context, heartbeat: Callable[[int], None]) -> None:
-    while True:
-        await asyncio.sleep(HEARTBEAT_SECONDS)
-        await ctx.save(heartbeat)
+        beating.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beating
 
 
 def build_running(link: DiscordGuildLink) -> bool:
@@ -1687,23 +1690,16 @@ async def run_build(
     """Runs a build the caller already claimed, and records how it ended. Returns the error, if
     it failed."""
     error = None
+    store = Store(session_scope)
     try:
-        plan, snapshot, live = await prepare(
-            link_id, reset=reset, target=target, session_scope=session_scope
-        )
-        if plan.blocked:
-            error = " ".join(plan.blockers)
-        else:
-            store = Store(session_scope)
-            await execute(
-                plan,
-                snapshot,
-                live,
-                discord_rest.get_rest(),
-                store,
-                progress,
-                heartbeat=store.heartbeat,
+        async with kept_alive(link_id, store.heartbeat):
+            plan, snapshot, live = await prepare(
+                link_id, reset=reset, target=target, session_scope=session_scope
             )
+            if plan.blocked:
+                error = " ".join(plan.blockers)
+            else:
+                await execute(plan, snapshot, live, discord_rest.get_rest(), store, progress)
     except Exception as exc:
         log.exception("Discord build for link %s failed", link_id)
         error = str(exc) or type(exc).__name__

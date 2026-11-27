@@ -2,6 +2,7 @@
 a real build of the shared test server (tests/core/conftest.py)."""
 
 import asyncio
+import threading
 from datetime import timedelta
 
 import pytest
@@ -745,6 +746,29 @@ class TestDrain:
         assert mark.attempts == 0
         db.refresh(built)
         assert built.sync_started_at is None
+
+    async def test_a_structure_sync_reading_a_rate_limited_server_keeps_its_claim(
+        self, db, built, scope, mock_discord_rest, monkeypatch
+    ):
+        from app.core.discord import build as build_module
+
+        monkeypatch.setattr(build_module, "HEARTBEAT_SECONDS", 0)
+        # The test's one session can't take a heartbeat's write from another thread mid-read.
+        beat = threading.Event()
+        monkeypatch.setattr(build_module.Store, "sync_heartbeat", lambda self, link_id: beat.set())
+        real = mock_discord_rest.channels
+
+        async def rate_limited(guild_id):
+            assert await asyncio.to_thread(beat.wait, 5), "no heartbeat came"
+            return await real(guild_id)
+
+        monkeypatch.setattr(mock_discord_rest, "channels", rate_limited)
+        mark_structure(db, built.id)
+        db.commit()
+        await _sync(scope)
+        db.refresh(built)
+        assert built.last_sync_error is None
+        assert _marks(db) == []
 
     async def test_failures_back_off_and_are_reported(
         self, db, built, scope, mock_discord_rest, monkeypatch
