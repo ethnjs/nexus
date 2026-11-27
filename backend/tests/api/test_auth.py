@@ -679,14 +679,18 @@ class TestRegister:
 
     def test_email_taken_before_code_entered(self, client, db):
         token = self._register(client).json()["challenge_token"]
-        db.add(User(email="new@test.com", role="user", status="active"))
+        db.add(
+            User(email="new@test.com", hashed_password=hash_password("Taken@123"), status="active")
+        )
         db.commit()
         assert _verify(client, token, emailed_code()).status_code == 409
         assert db.query(User).filter_by(email="new@test.com").count() == 1
 
     def test_email_taken_between_check_and_insert(self, client, db, monkeypatch):
         token = self._register(client).json()["challenge_token"]
-        db.add(User(email="new@test.com", role="user", status="active"))
+        db.add(
+            User(email="new@test.com", hashed_password=hash_password("Taken@123"), status="active")
+        )
         db.commit()
         monkeypatch.setattr(auth_routes, "check_if_email_exists", lambda *a, **k: None)
         assert _verify(client, token, emailed_code()).status_code == 409
