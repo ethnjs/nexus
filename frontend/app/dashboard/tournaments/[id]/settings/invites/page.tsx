@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { HoverCard } from "@/components/ui/HoverCard";
 import {
   IconArchive,
   IconInvite,
@@ -43,9 +44,10 @@ import { useMyMembership } from "@/lib/useMyMembership";
 import { useTournament } from "@/lib/useTournament";
 
 // Label / Code / Roles / Creator / Expiry / Uses / Actions
-const INVITE_ROW_COLUMNS = "1.2fr 120px 1.3fr 1.3fr 150px 60px 106px";
+const INVITE_ROW_COLUMNS =
+  "minmax(160px, 1.2fr) 120px minmax(180px, 1.3fr) minmax(150px, 1.3fr) 150px 60px 106px";
 // Email / Invite / Sent by / Sent / Status
-const EMAIL_ROW_COLUMNS = "1.6fr 1.2fr 1.3fr 170px 90px";
+const EMAIL_ROW_COLUMNS = "minmax(220px, 1.6fr) 120px minmax(150px, 1.3fr) 170px 90px";
 
 type Tab = "invites" | "emails";
 
@@ -259,18 +261,28 @@ function SentEmailsTable({ rows }: { rows: InviteEmailRecipient[] }) {
 
         {rows.map((row) => (
           <div key={`${row.sent_at}-${row.email}`} className={table.row}>
-            <span
-              style={{
-                ...CELL_TEXT,
-                fontFamily: "var(--font-mono)",
-                color: "var(--color-text-primary)",
-              }}
-            >
-              {row.email}
-            </span>
-            <span style={{ ...CELL_TEXT, textAlign: "center" }}>
-              {row.label ? `${row.label} (${row.join_code})` : row.join_code}
-            </span>
+            <span style={{ ...CELL_TEXT, color: "var(--color-text-primary)" }}>{row.email}</span>
+            {row.join_code === null ? (
+              <span style={{ ...CELL_TEXT, textAlign: "center" }}>Deleted invite</span>
+            ) : (
+              <HoverCard
+                style={{ justifySelf: "center" }}
+                content={
+                  <p
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
+                    {row.label ?? "Invite"}
+                  </p>
+                }
+              >
+                <Badge variant="default">{row.join_code}</Badge>
+              </HoverCard>
+            )}
             {row.sender.user_id === null ? (
               <span style={{ ...CELL_TEXT, textAlign: "center" }}>
                 {row.sender_name ?? "Deleted user"}
@@ -356,11 +368,6 @@ export default function InvitesSettingsPage() {
       );
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: loadSentEmails is recreated each render
-  useEffect(() => {
-    if (canManageInvites && tab === "emails" && sentEmails === null) loadSentEmails();
-  }, [tab, canManageInvites, sentEmails]);
-
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
@@ -431,7 +438,10 @@ export default function InvitesSettingsPage() {
           { key: "emails", label: "Sent emails" },
         ]}
         activeKey={tab}
-        onChange={setTab}
+        onChange={(next) => {
+          setTab(next);
+          if (next === "emails") loadSentEmails();
+        }}
       />
 
       {loadError && (
@@ -541,7 +551,6 @@ export default function InvitesSettingsPage() {
             tournamentId={tournamentId}
             inviteId={emailing.id}
             onClose={() => setEmailing(null)}
-            onSent={() => setSentEmails(null)}
           />
         </Modal>
       )}

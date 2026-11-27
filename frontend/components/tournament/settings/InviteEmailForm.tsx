@@ -27,6 +27,7 @@ export function InviteEmailForm({
 }: InviteEmailFormProps) {
   const [memberEmails, setMemberEmails] = useState<Set<string> | null>(null);
   const [emails, setEmails] = useState<string[]>([]);
+  const [emailsError, setEmailsError] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<InviteEmailResponse | null>(null);
@@ -51,20 +52,21 @@ export function InviteEmailForm({
   );
 
   async function handleSend() {
+    setEmailsError(undefined);
     setError(undefined);
 
     if (emails.length === 0) {
-      setError("Enter at least one email address.");
+      setEmailsError("Enter at least one email address");
       return;
     }
     if (hasInvalid) {
-      setError("Fix invalid email addresses before sending.");
+      setEmailsError("Fix the invalid addresses before sending");
       return;
     }
 
     const toSend = emails.filter((e) => !memberEmails?.has(e.toLowerCase()));
     if (toSend.length === 0) {
-      setError("All entered emails already belong to members of this tournament.");
+      setEmailsError("Everyone entered is already a member of this tournament");
       return;
     }
 
@@ -161,7 +163,7 @@ export function InviteEmailForm({
               )}
               <span
                 style={{
-                  fontFamily: "var(--font-mono)",
+                  fontFamily: "var(--font-sans)",
                   fontSize: "13px",
                   color: ok ? "var(--color-text-primary)" : "var(--color-danger)",
                 }}
@@ -187,8 +189,12 @@ export function InviteEmailForm({
         label="Emails"
         placeholder="Type an email and press Enter"
         value={emails}
-        onChange={setEmails}
+        onChange={(next) => {
+          setEmails(next);
+          setEmailsError(undefined);
+        }}
         getChipStatus={getChipStatus}
+        error={emailsError}
         fullWidth
       />
       {hasWarning && (
