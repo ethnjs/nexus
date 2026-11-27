@@ -16,22 +16,24 @@ async function proxy(
   const cookieHeader = req.headers.get("cookie") ?? "";
   const userAgent = req.headers.get("user-agent") ?? "";
   const forwardedFor = req.headers.get("x-forwarded-for") ?? "";
+  // Raw bytes and the browser's own content type, so a multipart file upload arrives intact.
+  const body = method !== "GET" ? await req.arrayBuffer() : null;
 
   const upstream = await fetch(`${API_URL}/${path}${search}`, {
     method,
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": req.headers.get("content-type") ?? "application/json",
       ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
       ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       ...(userAgent ? { "User-Agent": userAgent } : {}),
       ...(forwardedFor ? { "X-Forwarded-For": forwardedFor } : {}),
     },
-    body: method !== "GET" ? (await req.text()) || undefined : undefined,
+    body: body?.byteLength ? body : undefined,
   });
 
-  const body = upstream.status === 204 ? null : await upstream.text();
+  const responseBody = upstream.status === 204 ? null : await upstream.text();
 
-  const res = new NextResponse(body, { status: upstream.status });
+  const res = new NextResponse(responseBody, { status: upstream.status });
 
   upstream.headers.forEach((value, key) => {
     if (key.toLowerCase() === "set-cookie") {

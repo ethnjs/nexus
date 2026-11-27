@@ -393,3 +393,28 @@ def require_any_permission(*permissions: str):
         return current_user
 
     return _dependency
+
+
+def require_all_permissions(*permissions: str):
+    """Same as require_permission, but every one of `permissions` is needed. An import writes
+    both a form's answers (manage_forms) and who belongs to the tournament (manage_members)."""
+
+    def _dependency(
+        tournament_id: int,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        if not has_any_membership(current_user, tournament_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament not found",
+            )
+        held = get_user_permissions(current_user, tournament_id, db)
+        if not all(p in held for p in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+
+    return _dependency

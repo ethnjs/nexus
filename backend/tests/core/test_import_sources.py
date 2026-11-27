@@ -87,5 +87,5 @@ def test_upload_dispatch_and_rejections(monkeypatch):
     with pytest.raises(ImportSourceError, match=".csv or .xlsx"):
         read_upload("people.numbers", b"")
     monkeypatch.setattr(import_sources, "MAX_UPLOAD_BYTES", 3)
-    with pytest.raises(ImportSourceError, match="5 MB"):
+    with pytest.raises(ImportSourceError, match="4 MB"):
         read_upload("people.csv", b"Email\n")

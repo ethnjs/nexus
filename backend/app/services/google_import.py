@@ -7,6 +7,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import cached_property
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -54,10 +55,13 @@ def parse_form_url(url: str) -> str:
 
 def _service_account_info() -> dict[str, Any]:
     settings = get_settings()
-    if settings.google_service_account_json:
-        return json.loads(settings.google_service_account_json)
-    with open(settings.google_service_account_file, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        if settings.google_service_account_json:
+            return json.loads(settings.google_service_account_json)
+        with open(settings.google_service_account_file, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        raise ImportSourceError("Google Sheets imports aren't set up on this server.") from e
 
 
 def service_account_email() -> str:
@@ -218,12 +222,21 @@ def form_from_api(form: dict[str, Any]) -> GoogleForm:
 
 
 class GoogleImportClient:
-    def __init__(self) -> None:
-        credentials = service_account.Credentials.from_service_account_info(
+    """Connects on first use, so a server without Google credentials can still take uploads."""
+
+    @cached_property
+    def _credentials(self):
+        return service_account.Credentials.from_service_account_info(
             _service_account_info(), scopes=SCOPES
         )
-        self._sheets = build("sheets", "v4", credentials=credentials, cache_discovery=False)
-        self._forms = build("forms", "v1", credentials=credentials, cache_discovery=False)
+
+    @cached_property
+    def _sheets(self):
+        return build("sheets", "v4", credentials=self._credentials, cache_discovery=False)
+
+    @cached_property
+    def _forms(self):
+        return build("forms", "v1", credentials=self._credentials, cache_discovery=False)
 
     def _not_readable(self, e: HttpError, what: str) -> ImportSourceError:
         if e.resp.status in (403, 404):

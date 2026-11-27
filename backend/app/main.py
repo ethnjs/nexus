@@ -9,6 +9,7 @@ from scalar_fastapi import get_scalar_api_reference
 from app.api.routes import (
     auth,
     events,
+    form_imports,
     forms,
     join,
     season_event,
@@ -166,6 +167,7 @@ app.include_router(chapter_admin.router, prefix="", dependencies=[api_key_depend
 app.include_router(chapter_memberships.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(chapter_join_codes.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(forms.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(form_imports.router, prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])

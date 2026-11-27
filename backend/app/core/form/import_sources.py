@@ -12,7 +12,8 @@ from zipfile import BadZipFile
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+# Under Vercel's 4.5 MB request limit, since uploads pass through the frontend's proxy.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 MAX_ROWS = 5000
 MAX_COLUMNS = 200
 
@@ -128,7 +129,7 @@ def read_xlsx(data: bytes, sheet: str | None = None) -> SourceTable:
 
 def read_upload(filename: str, data: bytes, sheet: str | None = None) -> SourceTable:
     if len(data) > MAX_UPLOAD_BYTES:
-        raise ImportSourceError("The file is larger than 5 MB.")
+        raise ImportSourceError("The file is larger than 4 MB.")
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if extension == "csv":
         return read_csv(data)

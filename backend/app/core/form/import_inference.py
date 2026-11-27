@@ -46,11 +46,13 @@ def _choices(labels: list[str]) -> list[dict[str, Any]]:
     return [_choice(label) for label in dict.fromkeys(labels)]
 
 
-def infer_identity(headers: list[str]) -> ImportIdentity | None:
+def infer_identity(headers: list[str], email: str | None = None) -> ImportIdentity | None:
+    """`email` names the email column when the TD has picked one."""
+
     def find(test) -> str | None:
         return next((h for h in headers if test(normalize(h))), None)
 
-    email = find(lambda h: "email" in h)
+    email = email or find(lambda h: "email" in h)
     if email is None:
         return None
     first = find(lambda h: "first name" in h)
@@ -200,10 +202,12 @@ def _from_grid_columns(
     )
 
 
-def infer_fields(table: SourceTable, form: GoogleForm | None = None) -> InferredImport:
+def infer_fields(
+    table: SourceTable, form: GoogleForm | None = None, email_column: str | None = None
+) -> InferredImport:
     """Questions in the Google Form's order first, then any column the form didn't cover, in
     column order. Identity columns become no question."""
-    identity = infer_identity(table.headers)
+    identity = infer_identity(table.headers, email_column)
     remaining = [h for h in table.headers if h not in _identity_headers(identity)]
     fields: list[InferredField] = []
 
