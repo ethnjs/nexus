@@ -345,9 +345,17 @@ export default function AccountSettingsPage() {
       )}
 
       {showDeactivateModal && (
-        <DeactivateAccountModal onClose={() => setShowDeactivateModal(false)} />
+        <DeactivateAccountModal
+          hasPassword={!!currentUser?.has_password}
+          onClose={() => setShowDeactivateModal(false)}
+        />
       )}
-      {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} />}
+      {showDeleteModal && (
+        <DeleteAccountModal
+          hasPassword={!!currentUser?.has_password}
+          onClose={() => setShowDeleteModal(false)}
+        />
+      )}
 
       <FloatingSaveBar
         visible={isDirty}

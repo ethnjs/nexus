@@ -1323,3 +1323,13 @@ export function IconDiscord({
     </svg>
   );
 }
+
+// Google's gradient "G": its pre-approved Sign in with Google icon with the button frame removed,
+// which the guidelines say not to alter. An <img> rather than inline, since the SVG's mask and
+// filter ids would collide when it appears twice on a page.
+export function IconGoogle({ size = 16 }: { size?: number }) {
+  return (
+    // biome-ignore lint/performance/noImgElement: a fixed-size static brand image gains nothing from next/image.
+    <img src="/google-g.svg" alt="" width={size} height={size} style={{ flexShrink: 0 }} />
+  );
+}

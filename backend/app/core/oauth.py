@@ -42,11 +42,7 @@ class IdentityLinkError(Exception):
 
 def is_google_configured() -> bool:
     settings = get_settings()
-    return bool(
-        settings.google_oauth_client_id
-        and settings.google_oauth_client_secret
-        and settings.google_oauth_redirect_uri
-    )
+    return bool(settings.google_oauth_client_id and settings.google_oauth_client_secret)
 
 
 def is_discord_link_configured() -> bool:
@@ -88,8 +84,12 @@ def frontend_redirect(path: str) -> str:
     return base + path
 
 
-# Discord's OAuth redirects go through the frontend proxy, so the session cookie stays
-# first-party. They must match the Developer Portal's exactly, with no trailing slash.
+# OAuth redirects go through the frontend proxy, so the session cookie stays first-party.
+# They must match the provider's registered URIs exactly, with no trailing slash.
+def google_redirect_uri() -> str:
+    return frontend_redirect("/api/proxy/auth/oauth/google/callback")
+
+
 def discord_link_redirect_uri() -> str:
     return frontend_redirect("/api/proxy/auth/oauth/discord/callback")
 
