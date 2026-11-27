@@ -54,7 +54,7 @@ def is_discord_link_configured() -> bool:
     return bool(settings.discord_application_id and settings.discord_client_secret)
 
 
-def get_google_oauth():
+def get_google_oauth() -> OAuth:
     """Lazily registered so tests (and a missing client) don't build it at import."""
     global _oauth
     if _oauth is None:
@@ -98,7 +98,7 @@ def discord_install_redirect_uri() -> str:
     return frontend_redirect("/api/proxy/discord/install/callback")
 
 
-def _name(value) -> str | None:
+def _name(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     value = value.strip()[:100]
