@@ -1,6 +1,7 @@
 """Confirming a build preview. Confirm carries a signed token naming the server's link, the kind
-of build, and who asked, so only they can confirm it and only for 10 minutes. Compact, because a
-Discord button's custom_id holds at most 100 characters."""
+of build, who asked, and the plan's digest, so only they can confirm it, only for 10 minutes, and
+only while the plan is the one they saw. Compact, because a Discord button's custom_id holds at
+most 100 characters."""
 
 import base64
 import hashlib
@@ -23,18 +24,19 @@ class PreviewToken:
     target: Target | None
     # "u<NEXUS user id>" from NEXUS, "d<Discord user id>" from Discord.
     actor: str
+    digest: str
     issued_at: int
 
 
 def _signature(message: str) -> str:
     key = get_settings().oauth_state_secret.encode()
-    digest = hmac.new(key, f"discord-build|{message}".encode(), hashlib.sha256).digest()[:16]
+    digest = hmac.new(key, f"discord-build|{message}".encode(), hashlib.sha256).digest()[:12]
     return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
-def sign(link_id: int, reset: bool, target: Target | None, actor: str) -> str:
+def sign(link_id: int, reset: bool, target: Target | None, actor: str, plan: Plan) -> str:
     scope = f"{target.kind[0]}{target.id}" if target else ""
-    message = f"{link_id}.{int(reset)}.{scope}.{actor}.{int(time.time())}"
+    message = f"{link_id}.{int(reset)}.{scope}.{actor}.{plan.digest()}.{int(time.time())}"
     return f"{message}.{_signature(message)}"
 
 
@@ -49,11 +51,11 @@ def verify(token: str) -> PreviewToken | None:
     if not message or not hmac.compare_digest(signature, _signature(message)):
         return None
     try:
-        link_id, reset, scope, actor, issued_at = message.split(".")
+        link_id, reset, scope, actor, digest, issued_at = message.split(".")
         target = None
         if scope:
             target = Target("role" if scope[0] == "r" else "channel", int(scope[1:]))
-        parsed = PreviewToken(int(link_id), reset == "1", target, actor, int(issued_at))
+        parsed = PreviewToken(int(link_id), reset == "1", target, actor, digest, int(issued_at))
     except ValueError:
         return None
     if time.time() - parsed.issued_at > EXPIRY_SECONDS:

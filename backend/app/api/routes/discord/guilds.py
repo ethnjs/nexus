@@ -387,7 +387,7 @@ def build_track_discord(
             groups=[DiscordPreviewGroup(title=t, items=items) for t, items in plan.groups()],
             warnings=plan.warnings,
             blockers=plan.blockers,
-            preview_token=sign(link.id, payload.reset, None, f"u{current_user.id}")
+            preview_token=sign(link.id, payload.reset, None, f"u{current_user.id}", plan)
             if runnable
             else None,
         )
@@ -418,6 +418,7 @@ def build_track_discord(
         reset=payload.reset,
         target=None,
         session_scope=discord_build.default_session_scope,
+        previewed=preview.digest,
     )
     response.status_code = status.HTTP_202_ACCEPTED
     db.refresh(link)

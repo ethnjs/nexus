@@ -47,7 +47,7 @@ If NEXUS refuses the server, lobot leaves it straight away, and the Discord page
 ## Build the server
 
 1. On **Settings → Discord**, click **Build server**. (Or run `/setup` in the server; see [Commands](#commands).)
-2. A preview lists everything the build will create or change, grouped by kind. Read it, then click **Confirm** within 10 minutes.
+2. A preview lists everything the build will create or change, grouped by kind. Read it, then click **Confirm** within 10 minutes. If the server or NEXUS changes before you confirm, lobot changes nothing and asks you to preview again.
    - **Yellow warnings** don't stop the build, but say what it will skip. For example, *Move lobot's role above Moderators.* means lobot can't manage a role that sits above its own.
    - **Red messages** block the build until you fix them, for example if lobot doesn't have Administrator.
 3. The badge changes to **Building…**. A large server takes a few minutes. You can leave the page.

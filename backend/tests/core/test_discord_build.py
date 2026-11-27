@@ -8,6 +8,7 @@ import pytest
 
 from app.core.discord.build import (
     GATE_NOTICE,
+    PLAN_CHANGED,
     VOLUNTEER_GUIDE_URL,
     Target,
     claim_build,
@@ -67,6 +68,20 @@ def _ow(guild, channel_name: str, target_id: int, type: int | None = None):
 
 
 class TestFirstBuild:
+    async def test_a_plan_that_changed_since_the_preview_does_nothing(
+        self, db, link, guild, scope, mock_discord_rest
+    ):
+        previewed = (await _preview(link, scope)).digest()
+        guild.add_role("Tournament Owner")
+        assert claim_build(db, link.id)
+        error = await run_build(
+            link.id, reset=False, target=None, session_scope=scope, previewed=previewed
+        )
+        assert error == PLAN_CHANGED
+        assert mock_discord_rest.writes == []
+        db.refresh(link)
+        assert link.built_at is None and link.last_build_status == "failed"
+
     async def test_creates_roles_channels_and_the_gate(self, db, link, guild, scope):
         plan = await _preview(link, scope)
         groups = dict(plan.groups())

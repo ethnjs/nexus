@@ -410,6 +410,19 @@ class TestSetupAndReset:
         assert _last_reply(mock_discord_rest, "click-token")["content"].startswith("Done.")
         assert guild.channel("verify")
 
+    def test_confirm_does_nothing_if_the_server_changed(
+        self, client, db, discord_on, link, td_user, guild, mock_discord_rest
+    ):
+        preview = self._setup_preview(client, db, td_user, mock_discord_rest)
+        guild.add_role("Tournament Owner")
+        _post(client, _click(_buttons(preview)[0]["custom_id"]))
+        db.refresh(link)
+        assert link.built_at is None
+        assert _last_reply(mock_discord_rest, "click-token")["content"] == (
+            "The server or NEXUS changed since the preview, so nothing was done. "
+            "Run the command again for a new preview."
+        )
+
     def test_nothing_to_change_after_a_build(
         self, client, db, discord_on, link, td_user, guild, mock_discord_rest
     ):

@@ -15,7 +15,13 @@ from app.core.discord.eligibility import is_eligible
 from app.core.discord.layout import event_name_with_division
 from app.core.discord.links import link_for_guild, user_label
 from app.core.discord.marks import mark_full, mark_member
-from app.core.discord.previews import PreviewExpired, discord_summary, sign, verify
+from app.core.discord.previews import (
+    PreviewExpired,
+    PreviewToken,
+    discord_summary,
+    sign,
+    verify,
+)
 from app.core.oauth import frontend_redirect
 from app.core.tournament import tournament_display_name
 from app.core.tournament.permissions import MANAGE_DISCORD, has_permission
@@ -268,7 +274,7 @@ async def _send_preview(
     )
     buttons = [button("Cancel", "nexus:cancel", SECONDARY_STYLE)]
     if not plan.blocked and not plan.empty:
-        custom_id = "nexus:go:" + sign(link_id, reset, target, actor)
+        custom_id = "nexus:go:" + sign(link_id, reset, target, actor, plan)
         buttons.insert(0, button("Confirm", custom_id, DANGER_STYLE if reset else PRIMARY_STYLE))
     await _edit(token, {"content": content, "components": [action_row(*buttons)]})
 
@@ -294,11 +300,11 @@ def _confirm(
         return refusal
     if not claim_build(db, link.id):
         return update("lobot is already building or syncing this server. Try again in a moment.")
-    schedule(_run_and_report, link.id, preview.reset, preview.target, payload["token"])
+    schedule(_run_and_report, link.id, preview, payload["token"])
     return update("Building… This can take a few minutes.")
 
 
-async def _run_and_report(link_id: int, reset: bool, target: Target | None, token: str) -> None:
+async def _run_and_report(link_id: int, preview: PreviewToken, token: str) -> None:
     last = 0.0
 
     async def progress(done: int, total: int) -> None:
@@ -310,12 +316,18 @@ async def _run_and_report(link_id: int, reset: bool, target: Target | None, toke
 
     error = await discord_build.run_build(
         link_id,
-        reset=reset,
-        target=target,
+        reset=preview.reset,
+        target=preview.target,
         session_scope=discord_build.default_session_scope,
+        previewed=preview.digest,
         progress=progress,
     )
-    if error:
+    if error == discord_build.PLAN_CHANGED:
+        content = (
+            "The server or NEXUS changed since the preview, so nothing was done. "
+            "Run the command again for a new preview."
+        )
+    elif error:
         content = f"The build stopped: {error}\nRun the command again to pick up where it left off."
     else:
         content = "Done. Members' roles will update over the next few seconds."

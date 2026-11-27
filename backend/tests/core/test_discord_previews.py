@@ -5,11 +5,12 @@ from app.core.discord.build import Action, Plan, Target
 from app.core.discord.previews import PreviewExpired, discord_summary, sign, verify
 
 BIG_ID = 1_560_569_782_195_978_320
+PLAN = Plan(actions=[Action("Create", "Role: Judge")])
 FOOTER = "Full list in NEXUS: http://nexus/settings\nHow this works: <http://docs/guide>"
 
 
 def test_round_trip():
-    token = sign(12, True, Target("role", BIG_ID), "d540713227571429376")
+    token = sign(12, True, Target("role", BIG_ID), "d540713227571429376", PLAN)
     parsed = verify(token)
     assert parsed is not None
     assert (parsed.link_id, parsed.reset, parsed.target, parsed.actor) == (
@@ -18,10 +19,18 @@ def test_round_trip():
         Target("role", BIG_ID),
         "d540713227571429376",
     )
+    assert parsed.digest == PLAN.digest()
+
+
+def test_digest_ignores_order_but_not_content():
+    a, b = Action("Create", "Role: A"), Action("Create", "Role: B")
+    assert Plan(actions=[a, b]).digest() == Plan(actions=[b, a]).digest()
+    assert Plan(actions=[a]).digest() != Plan(actions=[a, b]).digest()
+    assert Plan(actions=[a]).digest() != Plan(actions=[a], warnings=["Careful"]).digest()
 
 
 def test_full_build_has_no_target():
-    parsed = verify(sign(3, False, None, "u7"))
+    parsed = verify(sign(3, False, None, "u7", PLAN))
     assert parsed is not None and parsed.target is None and parsed.reset is False
 
 
@@ -30,7 +39,7 @@ def test_full_build_has_no_target():
     [lambda t: t.replace("u7", "u8"), lambda t: t[:-1] + ("B" if t[-1] == "A" else "A")],
 )
 def test_tampering_is_rejected(change):
-    assert verify(change(sign(3, False, None, "u7"))) is None
+    assert verify(change(sign(3, False, None, "u7", PLAN))) is None
 
 
 def test_garbage_is_rejected():
@@ -38,7 +47,7 @@ def test_garbage_is_rejected():
 
 
 def test_expires_after_ten_minutes(monkeypatch):
-    token = sign(3, False, None, "u7")
+    token = sign(3, False, None, "u7", PLAN)
     now = previews.time.time()
     monkeypatch.setattr(previews.time, "time", lambda: now + previews.EXPIRY_SECONDS + 1)
     with pytest.raises(PreviewExpired):
@@ -46,7 +55,7 @@ def test_expires_after_ten_minutes(monkeypatch):
 
 
 def test_fits_in_a_discord_custom_id():
-    token = sign(999_999, True, Target("channel", BIG_ID), f"d{BIG_ID}")
+    token = sign(999_999, True, Target("channel", BIG_ID), f"d{BIG_ID}", PLAN)
     assert len("nexus:go:" + token) <= 100
 
 

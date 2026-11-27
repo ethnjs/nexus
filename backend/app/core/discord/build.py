@@ -10,9 +10,11 @@ run (a channel's category, an event role in its overwrites) resolves the key whe
 """
 
 import asyncio
+import base64
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import logging
 from collections import Counter
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
@@ -83,6 +85,7 @@ VERIFY_KEY = "verify"
 ARCHIVED_KEY = "archived"
 VERIFY_CHANNEL_NAME = "verify"
 ARCHIVED_CATEGORY_NAME = "Archived"
+PLAN_CHANGED = "The server or NEXUS changed since the preview, so nothing was done. Preview again."
 MAX_ROLES = 250
 MAX_CHANNELS = 500
 STALE_BUILD_MINUTES = 2
@@ -830,6 +833,13 @@ class Plan:
         if self.gate:
             result.append(("Gate", [GATE_NOTICE]))
         return result
+
+    def digest(self) -> str:
+        """Fingerprints what the preview shows, so Confirm can tell whether the plan changed.
+        Sorted, since the planner's order within a heading follows query order."""
+        shown = sorted((title, item) for title, items in self.groups() for item in items)
+        text = repr((shown, sorted(self.warnings)))
+        return base64.urlsafe_b64encode(hashlib.sha256(text.encode()).digest()[:6]).decode()
 
 
 def _event_channel_overwrites(spec: ChannelSpec, staff: list[str]) -> OverwriteSpec:
@@ -1690,10 +1700,11 @@ async def run_build(
     reset: bool,
     target: Target | None,
     session_scope: SessionScope,
+    previewed: str | None = None,
     progress: Progress | None = None,
 ) -> str | None:
     """Runs a build the caller already claimed, and records how it ended. Returns the error, if
-    it failed."""
+    it failed. With `previewed`, a preview's Plan.digest, it does nothing if the plan changed."""
     error = None
     gone = False
     store = Store(session_scope)
@@ -1704,6 +1715,8 @@ async def run_build(
             )
             if plan.blocked:
                 error = " ".join(plan.blockers)
+            elif previewed is not None and plan.digest() != previewed:
+                error = PLAN_CHANGED
             else:
                 await execute(plan, snapshot, live, discord_rest.get_rest(), store, progress)
     except Exception as exc:

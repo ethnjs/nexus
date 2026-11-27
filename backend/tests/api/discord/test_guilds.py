@@ -617,6 +617,22 @@ class TestBuildRoute:
         assert link.last_build_status == "succeeded"
         assert guild.channel("verify")
 
+    def test_confirm_does_nothing_if_the_server_changed(
+        self, client, db, discord_on, td_user, td_tournament, track_id, guild, mock_discord_rest
+    ):
+        from app.core.discord.build import PLAN_CHANGED
+
+        link = _add_link(db, td_tournament, track_id)
+        login(client, "td@test.com", "tdpass")
+        token = self._build(client, td_tournament.id, track_id).json()["preview_token"]
+        guild.add_role("Tournament Owner")
+        res = self._build(client, td_tournament.id, track_id, dry_run=False, preview_token=token)
+        assert res.status_code == 202
+        db.refresh(link)
+        assert link.last_build_error == PLAN_CHANGED
+        assert link.built_at is None
+        assert mock_discord_rest.writes == []
+
     def test_confirm_needs_a_preview(
         self, client, db, discord_on, td_user, td_tournament, track_id, guild
     ):
@@ -627,14 +643,15 @@ class TestBuildRoute:
     def test_preview_token_is_bound_to_its_user_and_kind(
         self, client, db, discord_on, td_user, td_tournament, track_id, guild
     ):
+        from app.core.discord.build import Plan
         from app.core.discord.previews import sign
 
         link = _add_link(db, td_tournament, track_id)
         login(client, "td@test.com", "tdpass")
         for token in (
-            sign(link.id, False, None, "u999999"),
-            sign(link.id, True, None, f"u{td_user.id}"),
-            sign(link.id + 1, False, None, f"u{td_user.id}"),
+            sign(link.id, False, None, "u999999", Plan()),
+            sign(link.id, True, None, f"u{td_user.id}", Plan()),
+            sign(link.id + 1, False, None, f"u{td_user.id}", Plan()),
         ):
             res = self._build(
                 client, td_tournament.id, track_id, dry_run=False, preview_token=token
