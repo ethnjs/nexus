@@ -1,12 +1,50 @@
 import asyncio
+import logging
 from unittest.mock import Mock
 
 import discord
 import httpx2
 import pytest
+from discord.http import Route
 
 from app.services.discord import rest
 from app.services.discord.rest import DiscordRest, DiscordWaitTooLong, InteractionReplyError
+
+
+def test_changes_are_logged_without_nicknames_or_permissions(caplog):
+    caplog.set_level(logging.INFO, logger=rest.__name__)
+    member = Route("PATCH", "/guilds/{guild_id}/members/{user_id}", guild_id=1, user_id=2)
+    rest.log_call(member, {"nick": "Pat S."})
+    roles = Route("POST", "/guilds/{guild_id}/roles", guild_id=1)
+    rest.log_call(roles, {"name": "Runner", "permissions": "8", "hoist": False})
+    rest.log_call(Route("PATCH", "/guilds/{guild_id}/roles", guild_id=1), [{"id": "3"}] * 2)
+    rest.log_call(Route("GET", "/guilds/{guild_id}", guild_id=1), None)
+    assert caplog.messages == [
+        "PATCH /guilds/1/members/2 (nick)",
+        "POST /guilds/1/roles name='Runner' (hoist, permissions)",
+        "PATCH /guilds/1/roles (2 positions)",
+    ]
+
+
+def test_refused_calls_are_logged_except_404s(caplog):
+    caplog.set_level(logging.INFO, logger=rest.__name__)
+    route = Route(
+        "PUT",
+        "/guilds/{guild_id}/members/{user_id}/roles/{role_id}",
+        guild_id=1,
+        user_id=2,
+        role_id=3,
+    )
+    gone = discord.NotFound(Mock(status=404, reason="Not Found"), {"code": 10007})
+    refused = discord.HTTPException(
+        Mock(status=400, reason="Bad Request"), {"code": 50013, "message": "Missing Permissions"}
+    )
+    rest.log_call(route, None, gone)
+    rest.log_call(route, None, refused)
+    assert caplog.messages == [
+        "Discord refused PUT /guilds/1/members/2/roles/3: "
+        "400 Bad Request (error code: 50013): Missing Permissions"
+    ]
 
 
 async def test_adding_a_role_to_a_member_who_left_does_nothing(monkeypatch):

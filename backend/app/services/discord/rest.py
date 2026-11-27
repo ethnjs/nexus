@@ -41,6 +41,34 @@ def log_failure(logger: logging.Logger, message: str, *args: object) -> None:
         logger.exception(message, *args)
 
 
+log = logging.getLogger(__name__)
+
+# Shown with their values. Every other field is named only, so nicknames, message text and
+# permission bits stay out of the logs.
+_SHOWN_FIELDS = ("name", "parent_id")
+
+
+def log_call(route: Route, body: Any, error: discord.HTTPException | None = None) -> None:
+    """One line per change lobot makes in Discord, and per refused call except a 404, which
+    callers expect for members not in a server and objects already gone. Reads aren't logged."""
+    path = route.url.removeprefix(Route.BASE)
+    if error is not None:
+        if error.status != 404:
+            log.warning("Discord refused %s %s: %s", route.method, path, error)
+        return
+    if route.method == "GET":
+        return
+    if isinstance(body, list):
+        summary = f" ({len(body)} position{'' if len(body) == 1 else 's'})"
+    elif isinstance(body, dict):
+        shown = "".join(f" {k}={body[k]!r}" for k in _SHOWN_FIELDS if k in body)
+        named = sorted(k for k in body if k not in _SHOWN_FIELDS)
+        summary = shown + (f" ({', '.join(named)})" if named else "")
+    else:
+        summary = ""
+    log.info("%s %s%s", route.method, path, summary)
+
+
 async def _within_deadline[T](request: Awaitable[T]) -> T:
     deadline = asyncio.timeout(REQUEST_DEADLINE)
     try:
@@ -76,7 +104,13 @@ class DiscordRest:
                     self.bot_user_id = int(user["id"])
                     self._http = http
         assert self._http is not None
-        return await _within_deadline(self._http.request(route, **kwargs))
+        try:
+            result = await _within_deadline(self._http.request(route, **kwargs))
+        except discord.HTTPException as exc:
+            log_call(route, kwargs.get("json"), exc)
+            raise
+        log_call(route, kwargs.get("json"))
+        return result
 
     async def close(self) -> None:
         if self._http is not None:
