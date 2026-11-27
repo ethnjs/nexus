@@ -10,9 +10,10 @@ picked up next time. A failure backs the marks off exponentially, up to an hour.
 import asyncio
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Protocol
 
 import psycopg
@@ -38,6 +39,9 @@ LEASE = timedelta(minutes=10)
 BUSY_RETRY = timedelta(seconds=30)
 MAX_BACKOFF = timedelta(hours=1)
 BATCH = 200
+# Discord rate-limits each server separately, so servers sync side by side; the cap bounds the
+# database connections and threads they hold.
+MAX_SERVERS = 5
 
 SessionScope = Callable[[], contextlib.AbstractContextManager[Session]]
 
@@ -54,14 +58,18 @@ def backoff(attempts: int) -> timedelta:
     return min(timedelta(seconds=5 * 2**attempts), MAX_BACKOFF)
 
 
-def claim_marks(db: Session, limit: int = BATCH) -> tuple[datetime, dict[int, list[Claimed]]]:
-    """Leases the due marks, grouped by server link, and returns them with the claim time."""
+def claim_marks(
+    db: Session, limit: int = BATCH, *, skip: Collection[int] = ()
+) -> tuple[datetime, dict[int, list[Claimed]]]:
+    """Leases the due marks, grouped by server link, and returns them with the claim time. Marks
+    of the links in `skip` are left for later."""
     now = db.scalar(select(func.clock_timestamp()))
     assert now is not None
+    query = db.query(DiscordSyncMark).filter(DiscordSyncMark.next_attempt_at <= now)
+    if skip:
+        query = query.filter(DiscordSyncMark.link_id.notin_(list(skip)))
     rows = (
-        db.query(DiscordSyncMark)
-        .filter(DiscordSyncMark.next_attempt_at <= now)
-        .order_by(DiscordSyncMark.next_attempt_at, DiscordSyncMark.id)
+        query.order_by(DiscordSyncMark.next_attempt_at, DiscordSyncMark.id)
         .limit(limit)
         .with_for_update(skip_locked=True)
         .all()
@@ -97,10 +105,18 @@ def _retry(db: Session, marks: list[Claimed], delay: timedelta | None = None) ->
 
 
 class Syncer:
-    """Reconciles claimed marks. Database work runs in threads, never on the event loop."""
+    """Reconciles claimed marks, each server in its own task, so a server waiting out a rate
+    limit doesn't hold up the others. Database work runs in threads, never on the event loop."""
 
-    def __init__(self, session_scope: SessionScope = build.default_session_scope) -> None:
+    def __init__(
+        self,
+        session_scope: SessionScope = build.default_session_scope,
+        *,
+        max_servers: int = MAX_SERVERS,
+    ) -> None:
         self._scope = session_scope
+        self._slots = asyncio.Semaphore(max_servers)
+        self._running: dict[int, asyncio.Task[None]] = {}
 
     async def _in_db[T](self, fn: Callable[[Session], T]) -> T:
         def run() -> T:
@@ -111,13 +127,39 @@ class Syncer:
 
         return await asyncio.to_thread(run)
 
-    async def run_pending(self) -> None:
+    async def start_pending(self) -> None:
+        """Starts a sync for every server with due marks. A server already syncing keeps its new
+        marks until it finishes, so no server ever has two syncs at once."""
         while True:
-            claimed_at, by_link = await self._in_db(claim_marks)
+            claim = partial(claim_marks, skip=set(self._running))
+            claimed_at, by_link = await self._in_db(claim)
             for link_id, marks in by_link.items():
-                await self.sync_link(link_id, marks, claimed_at)
+                self._running[link_id] = asyncio.create_task(
+                    self._sync_in_slot(link_id, marks, claimed_at)
+                )
             if sum(len(m) for m in by_link.values()) < BATCH:
                 return
+
+    async def run_pending(self) -> None:
+        """Syncs every server with due marks, and returns once they're all done."""
+        await self.start_pending()
+        await asyncio.gather(*self._running.values())
+
+    async def stop(self) -> None:
+        tasks = list(self._running.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _sync_in_slot(self, link_id: int, marks: list[Claimed], claimed_at: datetime) -> None:
+        try:
+            async with self._slots:
+                await self.sync_link(link_id, marks, claimed_at)
+        except Exception:
+            # Only the database failing gets here; the marks' lease runs out and they're retried.
+            log.exception("Discord sync for link %s failed", link_id)
+        finally:
+            self._running.pop(link_id, None)
 
     async def sync_link(self, link_id: int, marks: list[Claimed], claimed_at: datetime) -> None:
         state = await self._in_db(lambda db: _link_state(db, link_id))
@@ -342,7 +384,8 @@ class Leaver(Protocol):
 
 
 class PendingSync(Protocol):
-    async def run_pending(self) -> None: ...
+    async def start_pending(self) -> None: ...
+    async def stop(self) -> None: ...
 
 
 class Drain:
@@ -382,10 +425,11 @@ class Drain:
                     except Exception:
                         log.exception("Couldn't act on the %s notification %r", CHANNEL, payload)
                 try:
-                    await self._syncer.run_pending()
+                    await self._syncer.start_pending()
                 except Exception:
                     log.exception("The Discord sync loop failed")
         finally:
+            await self._syncer.stop()
             if conn is not None:
                 await asyncio.to_thread(conn.close)
 

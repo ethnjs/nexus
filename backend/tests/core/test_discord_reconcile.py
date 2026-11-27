@@ -1,13 +1,14 @@
 """The sync: marks claimed by the drain and reconciled against the in-memory Discord server, after
 a real build of the shared test server (tests/core/conftest.py)."""
 
+import asyncio
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import event as sa_event
 
 from app.core.discord import events as gateway_events
-from app.core.discord.build import claim_build, run_build
+from app.core.discord.build import claim_build, claim_sync, release_sync, run_build
 from app.core.discord.drain import Syncer, claim_marks
 from app.core.discord.marks import mark_full, mark_member, mark_structure
 from app.core.discord.sweep import mark_all_full
@@ -851,6 +852,106 @@ class TestDrain:
         assert tried == [6101]
         db.refresh(built)
         assert built.last_sync_error == str(DiscordWaitTooLong())
+
+
+class HeldSyncer(Syncer):
+    """Records each server's sync without calling Discord. The `held` server's sync waits until
+    `release` is set, like one waiting out a rate limit."""
+
+    def __init__(self, scope, held: int, **kwargs) -> None:
+        super().__init__(scope, **kwargs)
+        self.held = held
+        self.release = asyncio.Event()
+        self.started: list[int] = []
+        self.finished: list[int] = []
+
+    async def sync_link(self, link_id, marks, claimed_at) -> None:
+        self.started.append(link_id)
+        if link_id == self.held:
+            await self.release.wait()
+        self.finished.append(link_id)
+
+
+async def _let_tasks_run() -> None:
+    for _ in range(10):
+        await asyncio.sleep(0)
+
+
+class TestConcurrency:
+    @pytest.fixture
+    def other(self, db, link, td_tournament) -> DiscordGuildLink:
+        """A second server, on another track, both with a due mark."""
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+        db.add(track)
+        db.flush()
+        other = DiscordGuildLink(
+            tournament_id=td_tournament.id, track_id=track.id, guild_id=GUILD_ID + 1
+        )
+        db.add(other)
+        db.flush()
+        mark_member(db, link.id, 1)
+        mark_member(db, other.id, 1)
+        db.commit()
+        return other
+
+    async def test_a_server_waiting_on_discord_doesnt_hold_up_the_others(self, link, other, scope):
+        syncer = HeldSyncer(scope, held=link.id)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        assert syncer.finished == [other.id]
+        syncer.release.set()
+        await syncer.run_pending()
+        assert syncer.finished == [other.id, link.id]
+
+    async def test_at_most_max_servers_sync_at_once(self, link, other, scope):
+        syncer = HeldSyncer(scope, held=link.id, max_servers=1)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        assert syncer.started == [link.id]
+        syncer.release.set()
+        await syncer.run_pending()
+        assert syncer.started == [link.id, other.id]
+
+    async def test_a_server_never_has_two_syncs_at_once(self, db, link, scope):
+        mark_member(db, link.id, 1)
+        db.commit()
+        syncer = HeldSyncer(scope, held=link.id)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        mark_member(db, link.id, 2)
+        db.commit()
+        await syncer.start_pending()
+        await _let_tasks_run()
+        assert syncer.started == [link.id]
+
+        # The mark written meanwhile waits for the first sync, then gets its own.
+        syncer.release.set()
+        await _let_tasks_run()
+        await syncer.run_pending()
+        assert syncer.started == [link.id, link.id]
+
+    async def test_stopping_cancels_running_syncs(self, db, link, scope):
+        mark_member(db, link.id, 1)
+        db.commit()
+        syncer = HeldSyncer(scope, held=link.id)
+        await syncer.start_pending()
+        await _let_tasks_run()
+        await syncer.stop()
+        assert syncer.finished == []
+        # Still leased, so the next leader retries it once the lease runs out.
+        [mark] = db.query(DiscordSyncMark).all()
+        assert mark.next_attempt_at > utcnow()
+
+    async def test_only_one_sync_changes_a_server_at_a_time(self, db, link):
+        assert claim_sync(db, link.id)
+        assert not claim_sync(db, link.id)
+        release_sync(db, link.id)
+        assert claim_sync(db, link.id)
+
+        # A sync silent for over 2 minutes was interrupted, and its claim is taken over.
+        link.sync_started_at = utcnow() - timedelta(minutes=3)
+        db.commit()
+        assert claim_sync(db, link.id)
 
 
 class TestGatewayEvents:

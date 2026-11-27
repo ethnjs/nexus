@@ -1594,6 +1594,13 @@ def _no_build_running(now: datetime) -> ColumnElement[bool]:
     )
 
 
+def _no_sync_running(now: datetime) -> ColumnElement[bool]:
+    return or_(
+        DiscordGuildLink.sync_started_at.is_(None),
+        DiscordGuildLink.sync_started_at < now - timedelta(minutes=STALE_BUILD_MINUTES),
+    )
+
+
 def claim_build(db: Session, link_id: int) -> bool:
     """Marks the link as building unless another build, or the sync's structure step, holds it.
     Builds can run on any backend process, so this is the only thing stopping two at once. Both
@@ -1605,10 +1612,7 @@ def claim_build(db: Session, link_id: int) -> bool:
         .filter(
             DiscordGuildLink.id == link_id,
             _no_build_running(now),
-            or_(
-                DiscordGuildLink.sync_started_at.is_(None),
-                DiscordGuildLink.sync_started_at < now - timedelta(minutes=STALE_BUILD_MINUTES),
-            ),
+            _no_sync_running(now),
         )
         .update(
             {"last_build_status": "running", "last_build_at": now, "last_build_error": None},
@@ -1620,12 +1624,13 @@ def claim_build(db: Session, link_id: int) -> bool:
 
 
 def claim_sync(db: Session, link_id: int) -> bool:
-    """Lets the sync change roles and channels unless a build holds the link. Without it, a build
-    and the sync could plan from the same snapshot and both create a missing role."""
+    """Lets the sync change roles and channels unless a build, or another leader's sync during a
+    leadership handover, holds the link. Without it, both could plan from the same snapshot and
+    both create a missing role."""
     now = utcnow()
     claimed = (
         db.query(DiscordGuildLink)
-        .filter(DiscordGuildLink.id == link_id, _no_build_running(now))
+        .filter(DiscordGuildLink.id == link_id, _no_build_running(now), _no_sync_running(now))
         .update({"sync_started_at": now}, synchronize_session=False)
     )
     db.commit()
