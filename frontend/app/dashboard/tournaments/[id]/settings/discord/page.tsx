@@ -231,6 +231,8 @@ function TrackDiscord({
     link?.last_build_status === "running" &&
     link.last_build_at !== null &&
     now - new Date(link.last_build_at).getTime() < BUILD_STALE_MS;
+  // The backend stopped mid-build, so the build never recorded how it ended.
+  const interrupted = link?.last_build_status === "running" && !building;
 
   // A build runs in the background; poll until it finishes.
   useEffect(() => {
@@ -351,6 +353,14 @@ function TrackDiscord({
       {link.last_build_error && !building && (
         <div style={{ margin: "12px 0" }}>
           <Banner variant="error" message={`Last build failed: ${link.last_build_error}`} />
+        </div>
+      )}
+      {interrupted && !removed && (
+        <div style={{ margin: "12px 0" }}>
+          <Banner
+            variant="warning"
+            message="The last build stopped before it finished. Run it again to pick up where it left off."
+          />
         </div>
       )}
       {link.last_sync_error ? (
