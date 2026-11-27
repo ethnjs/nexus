@@ -1563,7 +1563,11 @@ async def kept_alive(link_id: int, heartbeat: Callable[[int], None]) -> AsyncGen
     async def beat() -> None:
         while True:
             await asyncio.sleep(HEARTBEAT_SECONDS)
-            await asyncio.to_thread(heartbeat, link_id)
+            # One failed write mustn't end the heartbeats: the claim would go stale mid-run.
+            try:
+                await asyncio.to_thread(heartbeat, link_id)
+            except Exception:
+                discord_rest.log_failure(log, "Heartbeat for link %s failed", link_id)
 
     beating = asyncio.create_task(beat())
     try:

@@ -304,6 +304,31 @@ class TestChecks:
         mock_discord_rest.create_role = rate_limited
         assert await _build(db, link, scope) is None
 
+    async def test_a_failed_heartbeat_doesnt_stop_the_next(
+        self, db, link, guild, scope, mock_discord_rest, monkeypatch
+    ):
+        from app.core.discord import build as build_module
+
+        monkeypatch.setattr(build_module, "HEARTBEAT_SECONDS", 0)
+        beats: list[int] = []
+        beat = threading.Event()
+
+        def flaky(self, link_id):
+            beats.append(link_id)
+            if len(beats) == 1:
+                raise OSError("database went away")
+            beat.set()
+
+        monkeypatch.setattr(build_module.Store, "heartbeat", flaky)
+        real = mock_discord_rest.create_role
+
+        async def rate_limited(guild_id, **fields):
+            assert await asyncio.to_thread(beat.wait, 5), "no heartbeat after the failed one"
+            return await real(guild_id, **fields)
+
+        mock_discord_rest.create_role = rate_limited
+        assert await _build(db, link, scope) is None
+
     async def test_a_build_reading_a_rate_limited_server_keeps_its_claim(
         self, db, link, guild, scope, mock_discord_rest, monkeypatch
     ):
