@@ -55,7 +55,12 @@ class DiscordRest:
             async with self._login:
                 if self._http is None:
                     http = _http_client()
-                    user = await http.static_login(self._token)
+                    try:
+                        user = await http.static_login(self._token)
+                    except BaseException:
+                        # static_login opens its session first and leaves it open when it fails.
+                        await http.close()
+                        raise
                     self.bot_user_id = int(user["id"])
                     self._http = http
         assert self._http is not None
