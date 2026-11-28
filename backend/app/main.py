@@ -129,7 +129,7 @@ app = FastAPI(
     redoc_url=None,
 )
 
-# oauth_state cookie: signed handshake for the Google redirect only, not login.
+# oauth_state cookie: the signed Google and Discord OAuth handshakes, not login.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.oauth_state_secret,

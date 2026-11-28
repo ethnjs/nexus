@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
     google_oauth_redirect_uri: str = ""
-    # Signs the oauth_state cookie. Production refuses the default.
+    # Signs the oauth_state cookie and build preview tokens. Production refuses the default.
     oauth_state_secret: str = DEV_OAUTH_STATE_SECRET
 
     discord_application_id: str = ""
