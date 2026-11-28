@@ -28,7 +28,8 @@ from app.models.models import (
 
 def _upsert(db: Session, marks: Iterable[tuple[int, str, int | None]]) -> None:
     """Writes (link id, kind, Discord user id) marks in one statement. Each must be distinct:
-    Postgres refuses an upsert that touches the same row twice."""
+    Postgres refuses an upsert that touches the same row twice. Pass several sorted, so
+    concurrent writers lock rows in the same order and can't deadlock."""
     rows = [
         {
             "link_id": link_id,
@@ -98,8 +99,8 @@ def discord_accounts(db: Session, user_ids: Iterable[int]) -> dict[int, int]:
 
 def mark_servers(db: Session, tournament_id: int, kind: str, track_id: int | None = None) -> None:
     """A structure or full mark on every server of the tournament, or on one track's."""
-    for link in syncing_links(db, tournament_id, None if track_id is None else [track_id]):
-        _mark(db, link.id, kind, None)
+    links = syncing_links(db, tournament_id, None if track_id is None else [track_id])
+    _upsert(db, sorted((link.id, kind, None) for link in links))
 
 
 def _mark_users_on_tracks(
@@ -200,8 +201,7 @@ def mark_account_everywhere(db: Session, user_id: int, discord_user_id: int) -> 
             DiscordGuildLink.track_id.in_(list(tracks)),
         ),
     )
-    for link in query:
-        mark_member(db, link.id, discord_user_id)
+    _upsert(db, sorted((link.id, "member", discord_user_id) for link in query))
 
 
 def mark_user_everywhere(db: Session, user_id: int) -> None:
