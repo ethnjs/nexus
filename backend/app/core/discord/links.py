@@ -1,0 +1,114 @@
+"""Linking Discord servers to tracks: the install's checks, and telling the leader to leave."""
+
+from dataclasses import dataclass
+from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.tournament.permissions import MANAGE_DISCORD, MANAGE_TOURNAMENT, has_permission
+from app.models.discord import DiscordGuildLink
+from app.models.models import (
+    OAuthIdentity,
+    OAuthProvider,
+    Tournament,
+    TournamentTrack,
+    User,
+    utcnow,
+)
+
+CHANNEL = "discord_sync"
+NOT_IN_SERVER = (
+    "lobot isn't in this Discord server any more: it was removed, or the server was deleted."
+)
+
+
+def user_label(user: User) -> str:
+    name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    return name or user.email
+
+
+def link_for_track(db: Session, track_id: int) -> DiscordGuildLink | None:
+    return db.query(DiscordGuildLink).filter(DiscordGuildLink.track_id == track_id).first()
+
+
+def link_for_guild(db: Session, guild_id: int) -> DiscordGuildLink | None:
+    return db.query(DiscordGuildLink).filter(DiscordGuildLink.guild_id == guild_id).first()
+
+
+def install_unavailable(db: Session, tournament: Tournament, track: TournamentTrack) -> str | None:
+    """Why "Add to Discord" can't start for this track, as an error code for the settings page."""
+    if tournament.is_archived:
+        return "start_tournament_archived"
+    if track.is_archived:
+        return "start_track_deleting"
+    link = link_for_track(db, track.id)
+    if link is not None and link.bot_removed_at is None:
+        return "start_track_linked"
+    return None
+
+
+def mark_removed(db: Session, link: DiscordGuildLink) -> None:
+    """Records that lobot is no longer in the server, removed or the server deleted, which stops
+    its syncing until it's added back. Commits."""
+    if link.bot_removed_at is None:
+        link.bot_removed_at = utcnow()
+    link.last_sync_error = None
+    db.commit()
+
+
+def notify_leave(db: Session, guild_id: int) -> None:
+    """Asks the leader to make the bot leave this server. Delivered when the transaction commits."""
+    db.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {"channel": CHANNEL, "payload": f"leave:{guild_id}"},
+    )
+
+
+@dataclass
+class InstallRefused(Exception):
+    """`code` goes back to the frontend; `owner` names the server owner when that's the reason."""
+
+    code: str
+    owner: str | None = None
+
+
+def check_install(
+    db: Session,
+    *,
+    installer: User,
+    tournament: Tournament,
+    track: TournamentTrack | None,
+    guild: dict[str, Any],
+) -> None:
+    """Raises InstallRefused unless this server may be linked to this track. `guild` is the
+    object from Discord's token response, never the redirect's guild_id hint."""
+    if not has_permission(installer, tournament.id, MANAGE_DISCORD, db):
+        raise InstallRefused("no_permission")
+    if tournament.is_archived:
+        raise InstallRefused("tournament_archived")
+    if track is None or track.is_archived:
+        raise InstallRefused("track_unavailable")
+
+    guild_id = int(guild["id"])
+    by_guild = link_for_guild(db, guild_id)
+    if by_guild is not None and by_guild.track_id != track.id:
+        raise InstallRefused("guild_linked_elsewhere")
+    by_track = link_for_track(db, track.id)
+    if by_track is not None and by_track.guild_id != guild_id:
+        raise InstallRefused("track_linked_elsewhere")
+
+    identity = (
+        db.query(OAuthIdentity)
+        .filter(
+            OAuthIdentity.provider == OAuthProvider.discord,
+            OAuthIdentity.provider_account_id == str(guild["owner_id"]),
+        )
+        .first()
+    )
+    if identity is None:
+        raise InstallRefused("owner_not_linked")
+    if identity.user.status != "active":
+        raise InstallRefused("owner_inactive", owner=user_label(identity.user))
+    if not has_permission(identity.user, tournament.id, MANAGE_TOURNAMENT, db):
+        raise InstallRefused("owner_lacks_permission", owner=user_label(identity.user))

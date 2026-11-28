@@ -115,6 +115,11 @@ def main(argv: list[str] | None = None) -> int:
         db.execute(text("TRUNCATE sessions, verification_tokens, email_codes"))
         print("sessions, email codes and verification tokens cleared")
 
+        # Linked accounts carry real Discord ids, usernames and Google emails, and server links
+        # point at real Discord servers, which a dev bot running on the copy would try to sync.
+        db.execute(text("TRUNCATE oauth_identities, discord_guild_links CASCADE"))
+        print("linked accounts and Discord server links cleared")
+
         if args.dry_run:
             db.rollback()
             print("\ndry run - rolled back")

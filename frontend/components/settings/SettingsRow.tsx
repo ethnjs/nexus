@@ -4,7 +4,7 @@ import styles from "./Settings.module.css";
 
 interface SettingsRowProps {
   label: ReactNode;
-  helper?: string;
+  helper?: ReactNode;
   children: ReactNode;
   last?: boolean;
   contentStyle?: CSSProperties;

@@ -381,6 +381,58 @@ async def send_password_reset_email(to: str, token: str) -> None:
     )
 
 
+async def send_identity_linked_notice(to: str, provider_email: str | None) -> None:
+    await _send_email(
+        to,
+        _Email(
+            subject="Google was connected to your NEXUS account",
+            heading="Google was connected to your account",
+            paragraphs=[
+                f"{provider_email or 'A Google account'} can now be used to sign in to your NEXUS account.",
+                "If you didn't do this, secure your account.",
+            ],
+            cta_label="Review security settings",
+            cta_url=_cta_url("/settings/security"),
+            footnote=_CONTACT_SUPPORT,
+        ),
+    )
+
+
+async def send_discord_linked_notice(to: str, username: str | None) -> None:
+    account = f"The Discord account {username}" if username else "A Discord account"
+    await _send_email(
+        to,
+        _Email(
+            subject="Discord was connected to your NEXUS account",
+            heading="Discord was connected to your account",
+            paragraphs=[
+                f"{account} is now linked to your NEXUS account, and gets your roles and channels in your tournaments' Discord servers.",
+                "If you didn't do this, secure your account and disconnect Discord.",
+            ],
+            cta_label="Review security settings",
+            cta_url=_cta_url("/settings/security"),
+            footnote=_CONTACT_SUPPORT,
+        ),
+    )
+
+
+async def send_identity_unlinked_notice(to: str, provider_email: str | None) -> None:
+    await _send_email(
+        to,
+        _Email(
+            subject="Google was disconnected from your NEXUS account",
+            heading="Google was disconnected from your account",
+            paragraphs=[
+                f"{provider_email or 'Your Google account'} can no longer be used to sign in to NEXUS.",
+                "If you didn't do this, secure your account.",
+            ],
+            cta_label="Review security settings",
+            cta_url=_cta_url("/settings/security"),
+            footnote=_CONTACT_SUPPORT,
+        ),
+    )
+
+
 async def send_password_changed_notice(to: str) -> None:
     await _send_email(
         to,

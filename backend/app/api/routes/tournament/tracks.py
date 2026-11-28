@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.discord.marks import mark_memberships, mark_servers, row_scope
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import reassign_track_role
 from app.core.tournament.audit import (
@@ -28,7 +29,13 @@ from app.core.tournament.tracks import (
     track_venue_usage,
 )
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentRole, TournamentTrack, User
+from app.models.models import (
+    Tournament,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
+)
 from app.schemas.tournament.track import (
     TournamentTrackCreate,
     TournamentTrackDeleteResult,
@@ -82,7 +89,8 @@ def _reassign_default_role(
     if old_role_id is None or old_role_id == new_role_id:
         return
     new_role = get_scoped_or_404(db, TournamentRole, new_role_id, tournament.id, "Role")
-    reassign_track_role(db, tournament, track.id, old_role_id, new_role, actor)
+    moved = reassign_track_role(db, tournament, track.id, old_role_id, new_role, actor)
+    mark_memberships(db, tournament.id, [row_scope(row) for row in moved])
 
 
 def _validate_state(track: TournamentTrack) -> None:
@@ -219,6 +227,12 @@ def update_track(
 
     # Buildings and zones exist only on competition days.
     if demoting:
+        # Its zones go, and the zone assignments cascade without marks of their own.
+        zoned = db.query(TournamentTrackAssignment).filter(
+            TournamentTrackAssignment.tournament_track_id == track.id,
+            TournamentTrackAssignment.zone_id.isnot(None),
+        )
+        mark_memberships(db, tournament_id, [row_scope(row) for row in zoned])
         clear_track_venue(db, track.id)
     for field, value in updates.items():
         setattr(track, field, value)
@@ -358,6 +372,8 @@ def restore_track(
         target_id=track.id,
         extra_data={"name": track.name},
     )
+    # Its server stopped syncing while the track was pending deletion.
+    mark_servers(db, tournament_id, "full", track_id=track.id)
     db.commit()
     db.refresh(track)
     return track
