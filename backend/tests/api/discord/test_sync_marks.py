@@ -239,6 +239,32 @@ class TestAssignments:
         assert td.delete(f"/tournaments/{td_tournament.id}/zones/{zone.id}/").status_code == 204
         assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
 
+    def test_demoting_a_track_marks_its_zone_staff(
+        self, db, td, td_tournament, links, volunteer, day1, day2
+    ):
+        membership = grant_role(db, td_tournament, volunteer, "Volunteer", track_id=day1)
+        zone = TournamentZone(tournament_id=td_tournament.id, track_id=day1, name="North")
+        db.add(zone)
+        db.commit()
+        res = td.post(
+            f"/tournaments/{td_tournament.id}/zone-assignments/",
+            json={
+                "zone_id": zone.id,
+                "membership_id": membership.id,
+                "role_id": _role(db, td_tournament.id, "Runner").id,
+            },
+        )
+        assert res.status_code == 201
+        db.get(TournamentTrack, day2).is_primary = True
+        db.commit()
+        _clear(db)
+        cleared = {"start_date": None, "end_date": None, "location": None, "division": None}
+        res = td.patch(
+            f"/tournaments/{td_tournament.id}/tracks/{day1}/", json={"is_primary": False, **cleared}
+        )
+        assert res.status_code == 200, res.text
+        assert _marks(db, links) == {("day1", "member", VOL_DISCORD)}
+
     def test_deleting_a_shift_unpins_its_staff_without_marks(
         self, db, td, td_tournament, links, volunteer, event, day1
     ):

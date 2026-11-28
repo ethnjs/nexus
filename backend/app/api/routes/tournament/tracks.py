@@ -29,7 +29,13 @@ from app.core.tournament.tracks import (
     track_venue_usage,
 )
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentRole, TournamentTrack, User
+from app.models.models import (
+    Tournament,
+    TournamentRole,
+    TournamentTrack,
+    TournamentTrackAssignment,
+    User,
+)
 from app.schemas.tournament.track import (
     TournamentTrackCreate,
     TournamentTrackDeleteResult,
@@ -221,6 +227,12 @@ def update_track(
 
     # Buildings and zones exist only on competition days.
     if demoting:
+        # Its zones go, and the zone assignments cascade without marks of their own.
+        zoned = db.query(TournamentTrackAssignment).filter(
+            TournamentTrackAssignment.tournament_track_id == track.id,
+            TournamentTrackAssignment.zone_id.isnot(None),
+        )
+        mark_memberships(db, tournament_id, [row_scope(row) for row in zoned])
         clear_track_venue(db, track.id)
     for field, value in updates.items():
         setattr(track, field, value)
